@@ -19,12 +19,14 @@ WordPress plugin: exact + regex redirects, object-cached compiled rule set, hit 
 - Redirect targets go through `UrlSafety::is_safe()` and the host guard in `TargetResolver`. Never bypass.
 - React renders text only. Never use `dangerouslySetInnerHTML`.
 - Never store IPs or user agents.
+- Real redirect exports are gitignored and must never be committed or used in tests; use `tests/fixtures/redirection-export-sample.json`.
 
 ## Layout
 
 - `src/Matching/`: pure matching core (unit-tested) + `RuleCache`, `Redirector`
 - `src/Redirects/`: `Rule`, `Repository` (single write choke point; flushes cache and fires hooks), `Validator`, `ChainResolver`
 - `src/Tracking/`: hit counting, 404 log
+- `src/Import/`: `RedirectionMapper` (pure mapping of Redirection export entries) and `Importer` (preview/import through Validator + Repository); UI in `assets/src/components/ImportTab.js`
 - `src/Rest/`: REST controllers (`adv-redirects/v1`)
 - `src/Admin/AdminPage.php` + `assets/src/`: React admin → `build/` (gitignored)
 

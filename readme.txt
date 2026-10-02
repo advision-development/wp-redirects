@@ -20,6 +20,7 @@ Exact and regex redirects with selectable status codes, object-cached matching, 
 * Loop prevention and redirect-chain warnings
 * Test-a-URL tool
 * 404 log with one-click "create redirect"
+* Import redirects from a Redirection plugin JSON export, with a dry-run preview (new, overwrite, skipped) and batched import
 * Actions and filters for developers (see docs/hooks.md)
 
 == Changelog ==
