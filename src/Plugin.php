@@ -8,11 +8,13 @@
 namespace Advision\Redirects;
 
 use Advision\Redirects\Admin\AdminPage;
+use Advision\Redirects\Import\Importer;
 use Advision\Redirects\Matching\Redirector;
 use Advision\Redirects\Matching\RuleCache;
 use Advision\Redirects\Redirects\ChainResolver;
 use Advision\Redirects\Redirects\Repository;
 use Advision\Redirects\Redirects\Validator;
+use Advision\Redirects\Rest\ImportController;
 use Advision\Redirects\Rest\NotFoundController;
 use Advision\Redirects\Rest\RedirectsController;
 use Advision\Redirects\Rest\SettingsController;
@@ -40,6 +42,7 @@ final class Plugin {
 	private NotFoundLogger $not_found_logger;
 	private SlugWatcher $slug_watcher;
 	private Cron $cron;
+	private Importer $importer;
 
 	public static function instance(): Plugin {
 		if ( null === self::$instance ) {
@@ -59,6 +62,7 @@ final class Plugin {
 		$this->not_found_logger = new NotFoundLogger( $this->not_found, $this->redirector );
 		$this->slug_watcher     = new SlugWatcher( $this->repository, $this->validator );
 		$this->cron             = new Cron( $this->hit_tracker, $this->not_found );
+		$this->importer         = new Importer( $this->repository, $this->validator );
 	}
 
 	public function boot(): void {
@@ -98,6 +102,7 @@ final class Plugin {
 			new TestController( $this->rule_cache, $this->chains ),
 			new NotFoundController( $this->not_found ),
 			new SettingsController(),
+			new ImportController( $this->importer ),
 		];
 		foreach ( $controllers as $controller ) {
 			$controller->register_routes();
@@ -143,5 +148,9 @@ final class Plugin {
 
 	public function not_found_logger(): NotFoundLogger {
 		return $this->not_found_logger;
+	}
+
+	public function importer(): Importer {
+		return $this->importer;
 	}
 }
