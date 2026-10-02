@@ -20,6 +20,11 @@ import ConfirmModal from './ConfirmModal';
 import RuleEditRow from './RuleEditRow';
 import RuleRow from './RuleRow';
 
+// Last row gone: the table may unmount, so fall back to the add form.
+function focusQuickAdd() {
+	document.querySelector( '.adv-redirects-quickadd__source input' )?.focus();
+}
+
 function SortableHeader( { label, column, sort, onSort, sortable } ) {
 	if ( ! sortable ) {
 		return <th scope="col">{ label }</th>;
@@ -452,15 +457,20 @@ export default function RulesTable( {
 										editButtons.current[ rule.id ] =
 											element;
 									} }
-									onDelete={ ( target ) => {
-										// Keep keyboard focus in the table:
-										// land on the neighbouring row.
+									onDelete={ async ( target ) => {
 										const neighbour =
 											visible[ index + 1 ] ||
 											visible[ index - 1 ];
-										onRemove( target );
-										if ( neighbour ) {
+										const deleted =
+											await onRemove( target );
+										// Failed: the row is restored, so
+										// focus goes back to it.
+										if ( ! deleted ) {
+											setReturnFocusId( target.id );
+										} else if ( neighbour ) {
 											setReturnFocusId( neighbour.id );
+										} else {
+											focusQuickAdd();
 										}
 									} }
 									onMove={ move }

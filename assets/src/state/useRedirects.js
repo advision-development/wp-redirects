@@ -76,9 +76,11 @@ export function useRedirects( notify ) {
 						},
 					],
 				} );
+				return true;
 			} catch ( error ) {
 				dispatch( { type: 'UPSERT', item: rule } );
 				notify( { status: 'error', message: errorMessage( error ) } );
+				return false;
 			}
 		},
 		[ create, notify, reload ]

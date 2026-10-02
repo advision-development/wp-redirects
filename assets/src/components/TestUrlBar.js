@@ -6,16 +6,28 @@ import { errorMessage } from '../constants';
 import { isStaleTest } from '../utils/a11y';
 import StatusBadge from './StatusBadge';
 
+/**
+ * Scrolls to the matched rule's row and focuses it.
+ *
+ * @param {number} ruleId Rule ID.
+ * @return {boolean} False when the row is not in the table right now.
+ */
 function showRule( ruleId ) {
 	const row = document.getElementById( `adv-redirects-rule-${ ruleId }` );
 	if ( ! row ) {
-		return;
+		return false;
 	}
 	row.scrollIntoView( { block: 'center' } );
-	row.querySelector( '.adv-redirects-col-actions button' )?.focus();
+	// The Edit button, or the first field when the row is being edited.
+	(
+		row.querySelector( '.adv-redirects-col-actions button' ) ||
+		row.querySelector( 'input, select, button' )
+	)?.focus();
+	return true;
 }
 
 function MatchedRule( { result, rule } ) {
+	const [ hidden, setHidden ] = useState( false );
 	if ( ! rule ) {
 		return null;
 	}
@@ -25,9 +37,20 @@ function MatchedRule( { result, rule } ) {
 				? __( 'Matched regex redirect:', 'wp-redirects' )
 				: __( 'Matched exact redirect:', 'wp-redirects' ) }{ ' ' }
 			<code>{ rule.source }</code>{ ' ' }
-			<Button variant="link" onClick={ () => showRule( result.rule_id ) }>
+			<Button
+				variant="link"
+				onClick={ () => setHidden( ! showRule( result.rule_id ) ) }
+			>
 				{ __( 'Show rule', 'wp-redirects' ) }
 			</Button>
+			{ hidden && (
+				<span>
+					{ __(
+						'It is hidden by the table search or filters. Clear them to see it.',
+						'wp-redirects'
+					) }
+				</span>
+			) }
 		</span>
 	);
 }
@@ -114,6 +137,8 @@ export default function TestUrlBar( {
 	const [ busy, setBusy ] = useState( false );
 	// The path the current result describes; null when nothing is shown.
 	const [ testedPath, setTestedPath ] = useState( null );
+	// Bumped per answer so per-result state (like "Show rule") starts fresh.
+	const [ runId, setRunId ] = useState( 0 );
 	const latestValue = useRef( value );
 	latestValue.current = value;
 
@@ -139,6 +164,7 @@ export default function TestUrlBar( {
 				return;
 			}
 			setResult( response );
+			setRunId( ( current ) => current + 1 );
 			setTestedPath( path );
 			onResult( response.matched ? response.rule_id : null );
 		} catch ( requestError ) {
@@ -180,7 +206,13 @@ export default function TestUrlBar( {
 			</Button>
 			<div className="adv-redirects-test__result" aria-live="polite">
 				{ error && <span className="is-error">{ error }</span> }
-				{ result && <TestResult result={ result } rules={ rules } /> }
+				{ result && (
+					<TestResult
+						key={ runId }
+						result={ result }
+						rules={ rules }
+					/>
+				) }
 			</div>
 			{ showHint && (
 				<p className="adv-redirects-test__hint">

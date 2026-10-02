@@ -62,7 +62,10 @@ export default function RuleEditRow( { rule, colSpan, onSave, onCancel } ) {
 	};
 
 	return (
-		<tr className="adv-redirects-editrow">
+		<tr
+			id={ `adv-redirects-rule-${ rule.id }` }
+			className="adv-redirects-editrow"
+		>
 			<td colSpan={ colSpan }>
 				{ /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */ }
 				<form

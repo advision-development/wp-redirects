@@ -104,18 +104,20 @@
 
 .adv-redirects-test {
 	align-items: end;
+	column-gap: 12px;
 	display: grid;
-	gap: 12px;
 	grid-template-columns: minmax(240px, 1fr) auto;
 
+	// The live region always stays rendered (so screen readers announce it);
+	// spacing comes from margins on non-empty rows, not from row gaps.
 	&__result {
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 		grid-column: 1 / -1;
 
-		&:empty {
-			display: none;
+		&:not(:empty) {
+			margin-top: 10px;
 		}
 
 		> span {
@@ -154,7 +156,7 @@
 		color: var(--adv-muted);
 		font-size: 12px;
 		grid-column: 1 / -1;
-		margin: 0;
+		margin: 8px 0 0;
 	}
 }
 
