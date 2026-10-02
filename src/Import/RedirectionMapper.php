@@ -22,7 +22,7 @@ final class RedirectionMapper {
 	public static function group_names( array $groups ): array {
 		$names = [];
 		foreach ( $groups as $group ) {
-			if ( is_array( $group ) && isset( $group['id'], $group['name'] ) && is_numeric( $group['id'] ) && is_string( $group['name'] ) ) {
+			if ( is_array( $group ) && isset( $group['id'], $group['name'] ) && self::is_int_like( $group['id'] ) && is_string( $group['name'] ) ) {
 				$names[ (int) $group['id'] ] = $group['name'];
 			}
 		}
@@ -35,7 +35,7 @@ final class RedirectionMapper {
 	 * @return array{ok:bool,source_id:int,rule:?array,notes:string[],error:?string}
 	 */
 	public static function map( $entry, array $group_names ): array {
-		$source_id = is_array( $entry ) && isset( $entry['id'] ) && is_numeric( $entry['id'] ) ? (int) $entry['id'] : 0;
+		$source_id = is_array( $entry ) && isset( $entry['id'] ) && self::is_int_like( $entry['id'] ) ? (int) $entry['id'] : 0;
 
 		if ( ! self::is_valid_entry( $entry ) ) {
 			return self::skip( $source_id, 'invalid_entry' );
@@ -105,11 +105,20 @@ final class RedirectionMapper {
 			&& isset( $entry['url'] ) && is_string( $entry['url'] ) && '' !== trim( $entry['url'] )
 			&& isset( $entry['regex'] ) && is_bool( $entry['regex'] )
 			&& isset( $entry['action_type'] ) && is_string( $entry['action_type'] )
-			&& isset( $entry['action_code'] ) && is_numeric( $entry['action_code'] )
-			&& isset( $entry['action_data'] ) && is_array( $entry['action_data'] )
+			&& isset( $entry['action_code'] ) && self::is_int_like( $entry['action_code'] )
+			&& array_key_exists( 'action_data', $entry ) && ( null === $entry['action_data'] || is_array( $entry['action_data'] ) )
 			&& isset( $entry['match_type'] ) && is_string( $entry['match_type'] )
 			&& isset( $entry['enabled'] ) && is_bool( $entry['enabled'] )
-			&& isset( $entry['group_id'] ) && is_numeric( $entry['group_id'] );
+			&& isset( $entry['group_id'] ) && self::is_int_like( $entry['group_id'] );
+	}
+
+	/**
+	 * Accepts ints and digit-only strings, not floats, exponents or padded strings.
+	 *
+	 * @param mixed $value Raw value.
+	 */
+	private static function is_int_like( $value ): bool {
+		return is_int( $value ) || ( is_string( $value ) && '' !== $value && ctype_digit( $value ) );
 	}
 
 	private static function skip( int $source_id, string $reason ): array {

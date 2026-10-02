@@ -126,4 +126,51 @@ final class RedirectionMapperTest extends TestCase {
 		$entry['title'] = str_repeat( 'é', 300 );
 		$this->assertSame( 255, mb_strlen( RedirectionMapper::map( $entry, [] )['rule']['note'] ) );
 	}
+
+	public function test_error_entry_with_null_action_data_maps_to_gone_rule(): void {
+		$entry                = $this->entry( 11 );
+		$entry['action_data'] = null;
+		$entry['action_code'] = 410;
+		$mapped               = RedirectionMapper::map( $entry, self::$groups );
+		$this->assertTrue( $mapped['ok'] );
+		$this->assertSame( 410, $mapped['rule']['status_code'] );
+		$this->assertNull( $mapped['rule']['target'] );
+	}
+
+	public function test_url_entry_with_null_action_data_is_invalid(): void {
+		$entry                = $this->entry( 1 );
+		$entry['action_data'] = null;
+		$this->assertSame( 'invalid_entry', RedirectionMapper::map( $entry, self::$groups )['error'] );
+	}
+
+	public function test_non_integer_numeric_fields_are_invalid(): void {
+		foreach ( [ '1e3', '301.9', ' 301', 301.0 ] as $code ) {
+			$entry                = $this->entry( 1 );
+			$entry['action_code'] = $code;
+			$this->assertSame( 'invalid_entry', RedirectionMapper::map( $entry, self::$groups )['error'], 'action_code ' . var_export( $code, true ) );
+		}
+		$entry             = $this->entry( 1 );
+		$entry['group_id'] = '1.5';
+		$this->assertSame( 'invalid_entry', RedirectionMapper::map( $entry, self::$groups )['error'] );
+	}
+
+	public function test_missing_group_id_is_invalid(): void {
+		$entry = $this->entry( 1 );
+		unset( $entry['group_id'] );
+		$this->assertSame( 'invalid_entry', RedirectionMapper::map( $entry, self::$groups )['error'] );
+	}
+
+	public function test_pass_query_mode_is_noted(): void {
+		$entry = $this->entry( 1 );
+		$entry['match_data']['source']['flag_query'] = 'pass';
+		$this->assertSame( [ 'query_mode' ], RedirectionMapper::map( $entry, self::$groups )['notes'] );
+	}
+
+	public function test_entry_without_match_data_maps_with_no_notes(): void {
+		$entry = $this->entry( 1 );
+		unset( $entry['match_data'] );
+		$mapped = RedirectionMapper::map( $entry, self::$groups );
+		$this->assertTrue( $mapped['ok'] );
+		$this->assertSame( [], $mapped['notes'] );
+	}
 }
