@@ -53,6 +53,11 @@ final class TestController extends BaseController {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function test_url( \WP_REST_Request $request ) {
+		$unknown = $this->reject_unknown( $request, [ 'path' ] );
+		if ( null !== $unknown ) {
+			return $unknown;
+		}
+
 		$input    = trim( (string) $request['path'] );
 		$internal = Site::internal_path( $input );
 		if ( null === $internal ) {

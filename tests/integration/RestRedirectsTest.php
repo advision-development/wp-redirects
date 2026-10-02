@@ -164,4 +164,35 @@ final class RestRedirectsTest extends Adv_Redirects_Rest_TestCase {
 		wp_set_current_user( self::$editor_id );
 		$this->assertSame( 403, $this->rest( 'POST', '/test', [ 'path' => '/a' ] )->get_status() );
 	}
+
+	public function test_unknown_fields_rejected_on_bulk_reorder_and_test(): void {
+		$id = $this->create( [ 'type' => 'exact', 'source' => '/a', 'target' => '/b', 'status_code' => 301 ] )->get_data()['rule']['id'];
+
+		$bulk = $this->rest( 'POST', '/redirects/bulk', [ 'action' => 'delete', 'ids' => [ $id ], 'force' => true ] );
+		$this->assertSame( 400, $bulk->get_status() );
+		$this->assertSame( 'adv_redirects_unknown_field', $bulk->get_data()['code'] );
+		$this->assertCount( 1, $this->rest( 'GET', '/redirects' )->get_data() );
+
+		$reorder = $this->rest( 'POST', '/redirects/reorder', [ 'ids' => [ $id ], 'extra' => 1 ] );
+		$this->assertSame( 400, $reorder->get_status() );
+		$this->assertSame( 'adv_redirects_unknown_field', $reorder->get_data()['code'] );
+
+		$test = $this->rest( 'POST', '/test', [ 'path' => '/a', 'extra' => 1 ] );
+		$this->assertSame( 400, $test->get_status() );
+		$this->assertSame( 'adv_redirects_unknown_field', $test->get_data()['code'] );
+	}
+
+	public function test_path_id_is_not_overridden_by_query_id(): void {
+		$first  = $this->create( [ 'type' => 'exact', 'source' => '/a', 'target' => '/b', 'status_code' => 301 ] )->get_data()['rule']['id'];
+		$second = $this->create( [ 'type' => 'exact', 'source' => '/c', 'target' => '/d', 'status_code' => 301 ] )->get_data()['rule']['id'];
+
+		$deleted = $this->rest( 'DELETE', "/redirects/{$first}", null, [ 'id' => $second ] );
+		$this->assertSame( $first, $deleted->get_data()['rule']['id'] );
+
+		$list = $this->rest( 'GET', '/redirects' )->get_data();
+		$this->assertSame( [ $second ], array_column( $list, 'id' ) );
+
+		$updated = $this->rest( 'PUT', "/redirects/{$second}", [ 'target' => '/e' ], [ 'id' => $first ] );
+		$this->assertSame( $second, $updated->get_data()['rule']['id'] );
+	}
 }

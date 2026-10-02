@@ -163,7 +163,7 @@ final class RedirectsController extends BaseController {
 			return $unknown;
 		}
 
-		$id     = (int) $request['id'];
+		$id     = (int) $request->get_url_params()['id'];
 		$result = $this->validator->validate( $this->input( $request ), $id );
 		if ( is_wp_error( $result ) ) {
 			return $result;
@@ -186,7 +186,7 @@ final class RedirectsController extends BaseController {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function delete_item( \WP_REST_Request $request ) {
-		$rule = $this->repository->find( (int) $request['id'] );
+		$rule = $this->repository->find( (int) $request->get_url_params()['id'] );
 		if ( null === $rule || ! $this->repository->delete( $rule->id ) ) {
 			return new \WP_Error( 'adv_redirects_not_found', __( 'Redirect not found.', 'wp-redirects' ), [ 'status' => 404 ] );
 		}
@@ -198,7 +198,15 @@ final class RedirectsController extends BaseController {
 		);
 	}
 
-	public function bulk( \WP_REST_Request $request ): \WP_REST_Response {
+	/**
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function bulk( \WP_REST_Request $request ) {
+		$unknown = $this->reject_unknown( $request, [ 'action', 'ids' ] );
+		if ( null !== $unknown ) {
+			return $unknown;
+		}
+
 		$action  = (string) $request['action'];
 		$ids     = array_values( array_unique( array_map( 'intval', (array) $request['ids'] ) ) );
 		$updated = 0;
@@ -237,7 +245,15 @@ final class RedirectsController extends BaseController {
 		);
 	}
 
-	public function reorder( \WP_REST_Request $request ): \WP_REST_Response {
+	/**
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function reorder( \WP_REST_Request $request ) {
+		$unknown = $this->reject_unknown( $request, [ 'ids' ] );
+		if ( null !== $unknown ) {
+			return $unknown;
+		}
+
 		$ids = array_map( 'intval', (array) $request['ids'] );
 		$this->repository->reorder( $ids );
 		return rest_ensure_response( [ 'reordered' => count( $ids ) ] );
