@@ -1,0 +1,431 @@
+import { Button, Notice, SearchControl, Spinner } from '@wordpress/components';
+import { useCallback, useEffect, useState } from '@wordpress/element';
+import { __, _n, sprintf } from '@wordpress/i18n';
+import { api } from '../api';
+import { errorMessage } from '../constants';
+import { visibleSelection } from '../utils/rules';
+import { parseGmt, timeAgo } from '../utils/time';
+import ConfirmModal from './ConfirmModal';
+
+const PER_PAGE = 20;
+
+export default function NotFoundTab( {
+	settings,
+	notify,
+	onCreateRedirect,
+	onOpenSettings,
+} ) {
+	const [ query, setQuery ] = useState( {
+		page: 1,
+		search: '',
+		orderby: 'hits',
+		order: 'desc',
+	} );
+	const [ searchInput, setSearchInput ] = useState( '' );
+	const [ data, setData ] = useState( { items: [], total: 0, pages: 0 } );
+	const [ loading, setLoading ] = useState( true );
+	const [ selected, setSelected ] = useState( [] );
+	const [ confirm, setConfirm ] = useState( null );
+
+	useEffect( () => {
+		const timer = setTimeout( () => {
+			const search = searchInput.trim();
+			setQuery( ( current ) =>
+				current.search === search
+					? current
+					: { ...current, search, page: 1 }
+			);
+		}, 300 );
+		return () => clearTimeout( timer );
+	}, [ searchInput ] );
+
+	const load = useCallback( async () => {
+		setLoading( true );
+		try {
+			const result = await api.list404s( {
+				...query,
+				perPage: PER_PAGE,
+			} );
+			if (
+				result.items.length === 0 &&
+				result.pages > 0 &&
+				query.page > result.pages
+			) {
+				// The last row of the last page was removed: step back a page.
+				setQuery( ( current ) => ( {
+					...current,
+					page: result.pages,
+				} ) );
+				return;
+			}
+			setData( result );
+			setSelected( [] );
+		} catch ( error ) {
+			notify( { status: 'error', message: errorMessage( error ) } );
+		} finally {
+			setLoading( false );
+		}
+	}, [ query, notify ] );
+
+	useEffect( () => {
+		load();
+	}, [ load ] );
+
+	const run = async ( action, successMessage ) => {
+		try {
+			await action();
+			notify( { message: successMessage } );
+			load();
+		} catch ( error ) {
+			notify( { status: 'error', message: errorMessage( error ) } );
+		}
+	};
+
+	const sortBy = ( orderby ) =>
+		setQuery( ( current ) => ( {
+			...current,
+			orderby,
+			order:
+				current.orderby === orderby && current.order === 'desc'
+					? 'asc'
+					: 'desc',
+			page: 1,
+		} ) );
+
+	const ariaSort = ( column ) => {
+		if ( query.orderby !== column ) {
+			return 'none';
+		}
+		return query.order === 'asc' ? 'ascending' : 'descending';
+	};
+
+	const visibleIds = loading ? [] : data.items.map( ( item ) => item.id );
+	const selectedVisible = visibleSelection( selected, visibleIds );
+	const allSelected =
+		visibleIds.length > 0 &&
+		visibleIds.every( ( id ) => selected.includes( id ) );
+
+	return (
+		<>
+			{ settings && ! settings.log_404 && (
+				<Notice status="warning" isDismissible={ false }>
+					{ __( '404 logging is turned off.', 'wp-redirects' ) }{ ' ' }
+					<Button variant="link" onClick={ onOpenSettings }>
+						{ __( 'Turn it on in Settings', 'wp-redirects' ) }
+					</Button>
+				</Notice>
+			) }
+			<section className="adv-redirects-card">
+				<div className="adv-redirects-toolbar">
+					<SearchControl
+						__nextHasNoMarginBottom
+						label={ __( 'Search 404s', 'wp-redirects' ) }
+						value={ searchInput }
+						onChange={ setSearchInput }
+					/>
+					<div className="adv-redirects-bulk">
+						<Button
+							variant="secondary"
+							size="compact"
+							isDestructive
+							disabled={ selectedVisible.length === 0 }
+							onClick={ () =>
+								setConfirm( {
+									type: 'selected',
+									ids: selectedVisible,
+								} )
+							}
+						>
+							{ __( 'Delete selected', 'wp-redirects' ) }
+						</Button>
+						<Button
+							variant="secondary"
+							size="compact"
+							isDestructive
+							disabled={ data.total === 0 }
+							onClick={ () => setConfirm( { type: 'all' } ) }
+						>
+							{ __( 'Clear log', 'wp-redirects' ) }
+						</Button>
+					</div>
+				</div>
+
+				{ loading && (
+					<div className="adv-redirects-loading">
+						<Spinner />
+					</div>
+				) }
+				{ ! loading && data.items.length === 0 && (
+					<p className="adv-redirects-empty">
+						{ query.search
+							? __( 'No 404s match this search.', 'wp-redirects' )
+							: __( 'No 404s recorded. Nice.', 'wp-redirects' ) }
+					</p>
+				) }
+				{ ! loading && data.items.length > 0 && (
+					<div className="adv-redirects-tablewrap">
+						<table className="adv-redirects-table">
+							<thead>
+								<tr>
+									<td className="adv-redirects-col-check">
+										<input
+											type="checkbox"
+											checked={ allSelected }
+											onChange={ () =>
+												setSelected(
+													allSelected
+														? []
+														: visibleIds
+												)
+											}
+											aria-label={ __(
+												'Select all',
+												'wp-redirects'
+											) }
+										/>
+									</td>
+									<th scope="col">
+										{ __( 'Path', 'wp-redirects' ) }
+									</th>
+									<th
+										scope="col"
+										aria-sort={ ariaSort( 'hits' ) }
+									>
+										<button
+											type="button"
+											className="adv-redirects-sort"
+											onClick={ () => sortBy( 'hits' ) }
+										>
+											{ __( 'Hits', 'wp-redirects' ) }
+										</button>
+									</th>
+									<th
+										scope="col"
+										aria-sort={ ariaSort( 'last_seen' ) }
+									>
+										<button
+											type="button"
+											className="adv-redirects-sort"
+											onClick={ () =>
+												sortBy( 'last_seen' )
+											}
+										>
+											{ __(
+												'Last seen',
+												'wp-redirects'
+											) }
+										</button>
+									</th>
+									<th scope="col">
+										{ __(
+											'Last referrer',
+											'wp-redirects'
+										) }
+									</th>
+									<th scope="col">
+										<span className="screen-reader-text">
+											{ __( 'Actions', 'wp-redirects' ) }
+										</span>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{ data.items.map( ( item ) => {
+									const lastSeen = parseGmt( item.last_seen );
+									const selectLabel = sprintf(
+										/* translators: %s: path */
+										__( 'Select %s', 'wp-redirects' ),
+										item.path
+									);
+									return (
+										<tr
+											key={ item.id }
+											className="adv-redirects-row"
+										>
+											<td className="adv-redirects-col-check">
+												<input
+													type="checkbox"
+													checked={ selected.includes(
+														item.id
+													) }
+													onChange={ () =>
+														setSelected(
+															( current ) =>
+																current.includes(
+																	item.id
+																)
+																	? current.filter(
+																			(
+																				id
+																			) =>
+																				id !==
+																				item.id
+																		)
+																	: [
+																			...current,
+																			item.id,
+																		]
+														)
+													}
+													aria-label={ selectLabel }
+												/>
+											</td>
+											<td>
+												<code>{ item.path }</code>
+											</td>
+											<td className="adv-redirects-col-hits">
+												{ item.hits.toLocaleString() }
+											</td>
+											<td>
+												<span
+													title={
+														lastSeen
+															? lastSeen.toLocaleString()
+															: undefined
+													}
+												>
+													{ timeAgo(
+														item.last_seen
+													) }
+												</span>
+											</td>
+											<td className="adv-redirects-referrer">
+												{ item.last_referrer || '—' }
+											</td>
+											<td className="adv-redirects-col-actions">
+												<Button
+													variant="secondary"
+													size="compact"
+													onClick={ () =>
+														onCreateRedirect(
+															item.path
+														)
+													}
+												>
+													{ __(
+														'Create redirect',
+														'wp-redirects'
+													) }
+												</Button>
+												<Button
+													variant="tertiary"
+													size="compact"
+													isDestructive
+													onClick={ () =>
+														run(
+															() =>
+																api.delete404(
+																	item.id
+																),
+															__(
+																'Entry deleted.',
+																'wp-redirects'
+															)
+														)
+													}
+												>
+													{ __(
+														'Delete',
+														'wp-redirects'
+													) }
+												</Button>
+											</td>
+										</tr>
+									);
+								} ) }
+							</tbody>
+						</table>
+					</div>
+				) }
+
+				{ data.pages > 1 && (
+					<nav
+						className="adv-redirects-pagination"
+						aria-label={ __( '404 log pages', 'wp-redirects' ) }
+					>
+						<Button
+							variant="secondary"
+							size="compact"
+							disabled={ query.page <= 1 }
+							onClick={ () =>
+								setQuery( ( current ) => ( {
+									...current,
+									page: current.page - 1,
+								} ) )
+							}
+						>
+							{ __( 'Previous', 'wp-redirects' ) }
+						</Button>
+						<span>
+							{
+								/* translators: 1: current page, 2: total pages */ sprintf(
+									__( 'Page %1$d of %2$d', 'wp-redirects' ),
+									query.page,
+									data.pages
+								)
+							}
+						</span>
+						<Button
+							variant="secondary"
+							size="compact"
+							disabled={ query.page >= data.pages }
+							onClick={ () =>
+								setQuery( ( current ) => ( {
+									...current,
+									page: current.page + 1,
+								} ) )
+							}
+						>
+							{ __( 'Next', 'wp-redirects' ) }
+						</Button>
+					</nav>
+				) }
+			</section>
+
+			{ confirm && (
+				<ConfirmModal
+					title={
+						confirm.type === 'all'
+							? __( 'Clear the 404 log?', 'wp-redirects' )
+							: __( 'Delete selected entries?', 'wp-redirects' )
+					}
+					message={
+						confirm.type === 'all'
+							? __(
+									'Every logged 404 will be removed. This cannot be undone.',
+									'wp-redirects'
+								)
+							: sprintf(
+									/* translators: %d: number of entries */
+									_n(
+										'Delete %d entry? This cannot be undone.',
+										'Delete %d entries? This cannot be undone.',
+										confirm.ids.length,
+										'wp-redirects'
+									),
+									confirm.ids.length
+								)
+					}
+					confirmLabel={
+						confirm.type === 'all'
+							? __( 'Clear log', 'wp-redirects' )
+							: __( 'Delete', 'wp-redirects' )
+					}
+					onCancel={ () => setConfirm( null ) }
+					onConfirm={ () => {
+						const { type, ids } = confirm;
+						setConfirm( null );
+						run(
+							type === 'all'
+								? api.clear404s
+								: () => api.bulkDelete404s( ids ),
+							type === 'all'
+								? __( '404 log cleared.', 'wp-redirects' )
+								: __( 'Entries deleted.', 'wp-redirects' )
+						);
+					} }
+				/>
+			) }
+		</>
+	);
+}

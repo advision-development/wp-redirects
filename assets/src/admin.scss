@@ -363,3 +363,43 @@
 	justify-content: flex-end;
 	margin-top: 16px;
 }
+
+.adv-redirects-referrer {
+	color: var(--adv-muted);
+	font-size: 12px;
+	max-width: 260px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.adv-redirects-pagination {
+	align-items: center;
+	display: flex;
+	gap: 12px;
+	justify-content: flex-end;
+	padding-top: 12px;
+}
+
+.adv-redirects-settings {
+	display: grid;
+	gap: 16px;
+	max-width: 720px;
+
+	.adv-redirects-card__title {
+		border-top: 1px solid #f0f0f1;
+		margin: 8px 0 0;
+		padding-top: 16px;
+
+		&:first-child {
+			border-top: 0;
+			padding-top: 0;
+		}
+	}
+
+	&__row {
+		display: grid;
+		gap: 16px;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	}
+}

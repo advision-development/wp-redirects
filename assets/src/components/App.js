@@ -1,9 +1,13 @@
-import { SnackbarList } from '@wordpress/components';
-import { useCallback, useState } from '@wordpress/element';
+import { SnackbarList, Spinner } from '@wordpress/components';
+import { useCallback, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
+import { api } from '../api';
+import { errorMessage } from '../constants';
 import { useNotices } from '../state/useNotices';
 import { useRedirects } from '../state/useRedirects';
+import NotFoundTab from './NotFoundTab';
 import RedirectsTab from './RedirectsTab';
+import SettingsTab from './SettingsTab';
 import Tabs from './Tabs';
 
 export default function App() {
@@ -11,7 +15,21 @@ export default function App() {
 	const redirects = useRedirects( notify );
 	const [ tab, setTab ] = useState( 'redirects' );
 	const [ prefill, setPrefill ] = useState( null );
+	const [ settings, setSettings ] = useState( null );
+
+	useEffect( () => {
+		api.getSettings()
+			.then( setSettings )
+			.catch( ( error ) =>
+				notify( { status: 'error', message: errorMessage( error ) } )
+			);
+	}, [ notify ] );
+
 	const clearPrefill = useCallback( () => setPrefill( null ), [] );
+	const createFrom404 = useCallback( ( path ) => {
+		setPrefill( path );
+		setTab( 'redirects' );
+	}, [] );
 
 	const tabs = [
 		{
@@ -43,6 +61,26 @@ export default function App() {
 						onPrefillUsed={ clearPrefill }
 					/>
 				) }
+				{ tab === '404s' && (
+					<NotFoundTab
+						settings={ settings }
+						notify={ notify }
+						onCreateRedirect={ createFrom404 }
+						onOpenSettings={ () => setTab( 'settings' ) }
+					/>
+				) }
+				{ tab === 'settings' &&
+					( settings ? (
+						<SettingsTab
+							settings={ settings }
+							onSaved={ setSettings }
+							notify={ notify }
+						/>
+					) : (
+						<div className="adv-redirects-loading">
+							<Spinner />
+						</div>
+					) ) }
 			</div>
 			<SnackbarList
 				notices={ notices }
