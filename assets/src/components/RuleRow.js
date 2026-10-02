@@ -4,6 +4,7 @@ import {
 	chevronDown,
 	chevronUp,
 	dragHandle,
+	Icon,
 	pencil,
 	trash,
 } from '@wordpress/icons';
@@ -26,11 +27,13 @@ export default function RuleRow( {
 	onDelete,
 	onMove,
 	onFixChain,
+	editButtonRef,
 } ) {
 	const lastHit = parseGmt( rule.last_hit_at );
 
 	return (
 		<tr
+			id={ `adv-redirects-rule-${ rule.id }` }
 			className={ [
 				'adv-redirects-row',
 				highlighted && 'is-highlighted',
@@ -54,31 +57,41 @@ export default function RuleRow( {
 			</td>
 			{ isRegex && (
 				<td className="adv-redirects-col-order">
-					{ reorderable && (
-						<span
-							className="adv-redirects-handle"
-							aria-hidden="true"
-						>
-							{ dragHandle }
+					<div className="adv-redirects-order">
+						{ reorderable && (
+							<span
+								className="adv-redirects-handle"
+								aria-hidden="true"
+							>
+								<Icon icon={ dragHandle } size={ 20 } />
+							</span>
+						) }
+						<span className="adv-redirects-position">
+							{ index + 1 }
 						</span>
-					) }
-					<span className="adv-redirects-position">
-						{ index + 1 }
-					</span>
-					<Button
-						size="small"
-						icon={ chevronUp }
-						label={ __( 'Move up', 'wp-redirects' ) }
-						disabled={ ! reorderable || index === 0 }
-						onClick={ () => onMove( index, index - 1 ) }
-					/>
-					<Button
-						size="small"
-						icon={ chevronDown }
-						label={ __( 'Move down', 'wp-redirects' ) }
-						disabled={ ! reorderable || index === total - 1 }
-						onClick={ () => onMove( index, index + 1 ) }
-					/>
+						<Button
+							size="small"
+							icon={ chevronUp }
+							label={ sprintf(
+								/* translators: %s: redirect source */
+								__( 'Move %s up', 'wp-redirects' ),
+								rule.source
+							) }
+							disabled={ ! reorderable || index === 0 }
+							onClick={ () => onMove( index, index - 1 ) }
+						/>
+						<Button
+							size="small"
+							icon={ chevronDown }
+							label={ sprintf(
+								/* translators: %s: redirect source */
+								__( 'Move %s down', 'wp-redirects' ),
+								rule.source
+							) }
+							disabled={ ! reorderable || index === total - 1 }
+							onClick={ () => onMove( index, index + 1 ) }
+						/>
+					</div>
 				</td>
 			) }
 			<td className="adv-redirects-col-toggle">
@@ -132,12 +145,11 @@ export default function RuleRow( {
 								variant="link"
 								onClick={ () => onFixChain( rule ) }
 							>
-								{
-									/* translators: %s: final destination */ sprintf(
-										__( 'Point to %s', 'wp-redirects' ),
-										rule.chain.final
-									)
-								}
+								{ sprintf(
+									/* translators: %s: final destination */
+									__( 'Point to %s', 'wp-redirects' ),
+									rule.chain.final
+								) }
 							</Button>
 						</>
 					) }
@@ -156,15 +168,24 @@ export default function RuleRow( {
 			</td>
 			<td className="adv-redirects-col-actions">
 				<Button
+					ref={ editButtonRef }
 					size="small"
 					icon={ pencil }
-					label={ __( 'Edit', 'wp-redirects' ) }
+					label={ sprintf(
+						/* translators: %s: redirect source */
+						__( 'Edit %s', 'wp-redirects' ),
+						rule.source
+					) }
 					onClick={ () => onEdit( rule.id ) }
 				/>
 				<Button
 					size="small"
 					icon={ trash }
-					label={ __( 'Delete', 'wp-redirects' ) }
+					label={ sprintf(
+						/* translators: %s: redirect source */
+						__( 'Delete %s', 'wp-redirects' ),
+						rule.source
+					) }
 					isDestructive
 					onClick={ () => onDelete( rule ) }
 				/>

@@ -4,7 +4,7 @@ import {
 	SelectControl,
 	VisuallyHidden,
 } from '@wordpress/components';
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { errorMessage, STATUS_OPTIONS } from '../constants';
 import { notifySaved } from '../utils/notifySaved';
@@ -67,6 +67,21 @@ export default function RulesTable( {
 	const [ editingId, setEditingId ] = useState( null );
 	const [ confirmDelete, setConfirmDelete ] = useState( false );
 	const [ dragIndex, setDragIndex ] = useState( null );
+	const editButtons = useRef( {} );
+	// The rule whose Edit button gets focus back once its edit row closes.
+	const [ returnFocusId, setReturnFocusId ] = useState( null );
+
+	useEffect( () => {
+		if ( returnFocusId !== null && editingId === null ) {
+			editButtons.current[ returnFocusId ]?.focus();
+			setReturnFocusId( null );
+		}
+	}, [ returnFocusId, editingId ] );
+
+	const closeEdit = ( id ) => {
+		setEditingId( null );
+		setReturnFocusId( id );
+	};
 
 	const filtered = isFiltered( filters );
 	const reorderable = isRegex && ! filtered;
@@ -157,7 +172,7 @@ export default function RulesTable( {
 
 	const saveEdit = async ( rule, patch ) => {
 		const result = await onUpdate( rule.id, patch );
-		setEditingId( null );
+		closeEdit( rule.id );
 		notifySaved( result, {
 			notify,
 			onUpdate,
@@ -282,17 +297,16 @@ export default function RulesTable( {
 						aria-label={ __( 'Bulk actions', 'wp-redirects' ) }
 					>
 						<span>
-							{
-								/* translators: %d: number selected */ sprintf(
-									_n(
-										'%d selected',
-										'%d selected',
-										activeSelection.length,
-										'wp-redirects'
-									),
-									activeSelection.length
-								)
-							}
+							{ sprintf(
+								/* translators: %d: number of selected redirects */
+								_n(
+									'%d redirect selected',
+									'%d redirects selected',
+									activeSelection.length,
+									'wp-redirects'
+								),
+								activeSelection.length
+							) }
 						</span>
 						<Button
 							variant="secondary"
@@ -321,7 +335,20 @@ export default function RulesTable( {
 			</div>
 
 			{ visible.length === 0 ? (
-				<p className="adv-redirects-empty">{ emptyMessage }</p>
+				<p className="adv-redirects-empty">
+					{ emptyMessage }
+					{ filtered && (
+						<>
+							{ ' ' }
+							<Button
+								variant="link"
+								onClick={ () => setFilters( DEFAULT_FILTERS ) }
+							>
+								{ __( 'Clear filters', 'wp-redirects' ) }
+							</Button>
+						</>
+					) }
+				</p>
 			) : (
 				<table className="adv-redirects-table">
 					<thead>
@@ -346,7 +373,9 @@ export default function RulesTable( {
 									{ __( 'Order', 'wp-redirects' ) }
 								</th>
 							) }
-							<th scope="col">{ __( 'On', 'wp-redirects' ) }</th>
+							<th scope="col">
+								{ __( 'Enabled', 'wp-redirects' ) }
+							</th>
 							<SortableHeader
 								label={ __( 'Source', 'wp-redirects' ) }
 								column="source"
@@ -399,7 +428,7 @@ export default function RulesTable( {
 									onSave={ ( patch ) =>
 										saveEdit( rule, patch )
 									}
-									onCancel={ () => setEditingId( null ) }
+									onCancel={ () => closeEdit( rule.id ) }
 								/>
 							) : (
 								<RuleRow
@@ -419,7 +448,21 @@ export default function RulesTable( {
 										} ).catch( reportError )
 									}
 									onEdit={ setEditingId }
-									onDelete={ onRemove }
+									editButtonRef={ ( element ) => {
+										editButtons.current[ rule.id ] =
+											element;
+									} }
+									onDelete={ ( target ) => {
+										// Keep keyboard focus in the table:
+										// land on the neighbouring row.
+										const neighbour =
+											visible[ index + 1 ] ||
+											visible[ index - 1 ];
+										onRemove( target );
+										if ( neighbour ) {
+											setReturnFocusId( neighbour.id );
+										}
+									} }
 									onMove={ move }
 									onFixChain={ ( target ) =>
 										onUpdate( target.id, {

@@ -58,6 +58,7 @@ export default function RedirectsTab( {
 					value={ testPath }
 					onChange={ setTestPath }
 					onResult={ setHighlightId }
+					rules={ redirects.items }
 				/>
 			</section>
 			<section className="adv-redirects-card">

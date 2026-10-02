@@ -105,6 +105,17 @@ export default function NotFoundTab( {
 			page: 1,
 		} ) );
 
+	const sortArrow = ( column ) => {
+		if ( query.orderby !== column ) {
+			return null;
+		}
+		return (
+			<span aria-hidden="true">
+				{ query.order === 'asc' ? ' ↑' : ' ↓' }
+			</span>
+		);
+	};
+
 	const ariaSort = ( column ) => {
 		if ( query.orderby !== column ) {
 			return 'none';
@@ -216,6 +227,7 @@ export default function NotFoundTab( {
 											onClick={ () => sortBy( 'hits' ) }
 										>
 											{ __( 'Hits', 'wp-redirects' ) }
+											{ sortArrow( 'hits' ) }
 										</button>
 									</th>
 									<th
@@ -233,6 +245,7 @@ export default function NotFoundTab( {
 												'Last seen',
 												'wp-redirects'
 											) }
+											{ sortArrow( 'last_seen' ) }
 										</button>
 									</th>
 									<th scope="col">
@@ -289,13 +302,13 @@ export default function NotFoundTab( {
 													aria-label={ selectLabel }
 												/>
 											</td>
-											<td>
+											<td className="adv-redirects-col-path">
 												<code>{ item.path }</code>
 											</td>
 											<td className="adv-redirects-col-hits">
 												{ item.hits.toLocaleString() }
 											</td>
-											<td>
+											<td className="adv-redirects-col-seen">
 												<span
 													title={
 														lastSeen
@@ -308,13 +321,27 @@ export default function NotFoundTab( {
 													) }
 												</span>
 											</td>
-											<td className="adv-redirects-referrer">
+											<td
+												className="adv-redirects-referrer"
+												title={
+													item.last_referrer ||
+													undefined
+												}
+											>
 												{ item.last_referrer || '—' }
 											</td>
 											<td className="adv-redirects-col-actions">
 												<Button
 													variant="secondary"
 													size="compact"
+													aria-label={ sprintf(
+														/* translators: %s: path */
+														__(
+															'Create redirect for %s',
+															'wp-redirects'
+														),
+														item.path
+													) }
 													onClick={ () =>
 														onCreateRedirect(
 															item.path
@@ -330,6 +357,14 @@ export default function NotFoundTab( {
 													variant="tertiary"
 													size="compact"
 													isDestructive
+													aria-label={ sprintf(
+														/* translators: %s: path */
+														__(
+															'Delete %s',
+															'wp-redirects'
+														),
+														item.path
+													) }
 													onClick={ () =>
 														run(
 															() =>
@@ -376,13 +411,12 @@ export default function NotFoundTab( {
 							{ __( 'Previous', 'wp-redirects' ) }
 						</Button>
 						<span>
-							{
-								/* translators: 1: current page, 2: total pages */ sprintf(
-									__( 'Page %1$d of %2$d', 'wp-redirects' ),
-									query.page,
-									data.pages
-								)
-							}
+							{ sprintf(
+								/* translators: 1: current page, 2: total pages */
+								__( 'Page %1$d of %2$d', 'wp-redirects' ),
+								query.page,
+								data.pages
+							) }
 						</span>
 						<Button
 							variant="secondary"
