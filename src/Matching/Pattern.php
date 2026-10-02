@@ -17,6 +17,10 @@ final class Pattern {
 	public static function delimit( string $source ): string {
 		// Escape every "~" not already preceded by an odd number of backslashes.
 		$escaped = preg_replace( '/(?<!\\\\)((?:\\\\\\\\)*)~/', '$1\\~', $source );
+		if ( null === $escaped ) {
+			// preg_replace failed (e.g. invalid UTF-8 or PCRE limits): fail closed with a pattern that never matches.
+			return '~(?!)~';
+		}
 		return '~' . $escaped . '~i';
 	}
 

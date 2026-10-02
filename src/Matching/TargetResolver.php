@@ -36,8 +36,10 @@ final class TargetResolver {
 			return null;
 		}
 
-		$host = UrlSafety::host_of( $url, $this->site_host );
-		if ( '' === $host || UrlSafety::host_of( $template, $this->site_host ) !== $host ) {
+		// The host must be exactly what the template declares, ignoring capture placeholders.
+		$expected_host = UrlSafety::host_of( (string) preg_replace( '/\$[1-9]/', '', $template ), $this->site_host );
+		$host          = UrlSafety::host_of( $url, $this->site_host );
+		if ( '' === $host || $expected_host !== $host ) {
 			return null;
 		}
 		if ( $host !== $this->site_host && ! empty( $this->allowed_hosts ) && ! in_array( $host, $this->allowed_hosts, true ) ) {
@@ -49,6 +51,10 @@ final class TargetResolver {
 		}
 		if ( $forward_query && '' !== $request_query ) {
 			$url = self::merge_query( $url, $request_query );
+			// Re-check after merging: enforces the length cap and rejects unsafe characters from the incoming query.
+			if ( ! UrlSafety::is_safe( $url ) ) {
+				return null;
+			}
 		}
 		return $url;
 	}
@@ -79,10 +85,29 @@ final class TargetResolver {
 		$base         = false === $qpos ? $url : substr( $url, 0, $qpos );
 		$target_query = false === $qpos ? '' : substr( $url, $qpos + 1 );
 
-		parse_str( $request_query, $incoming );
-		parse_str( $target_query, $existing );
-		$query = http_build_query( array_replace( $incoming, $existing ), '', '&', PHP_QUERY_RFC3986 );
+		// Merge raw pairs byte-for-byte: the target's pairs win, incoming pairs with new keys follow.
+		$pairs = [];
+		$known = [];
+		foreach ( explode( '&', $target_query ) as $pair ) {
+			if ( '' === $pair ) {
+				continue;
+			}
+			$pairs[]                          = $pair;
+			$known[ self::pair_key( $pair ) ] = true;
+		}
+		foreach ( explode( '&', $request_query ) as $pair ) {
+			if ( '' === $pair || isset( $known[ self::pair_key( $pair ) ] ) ) {
+				continue;
+			}
+			$pairs[] = $pair;
+		}
+		$query = implode( '&', $pairs );
 
 		return $base . ( '' !== $query ? '?' . $query : '' ) . $fragment;
+	}
+
+	private static function pair_key( string $pair ): string {
+		$eq = strpos( $pair, '=' );
+		return rawurldecode( false === $eq ? $pair : substr( $pair, 0, $eq ) );
 	}
 }

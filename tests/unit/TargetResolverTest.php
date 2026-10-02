@@ -44,7 +44,23 @@ final class TargetResolverTest extends TestCase {
 		);
 	}
 
+	public function test_capture_directly_after_external_host_is_allowed(): void {
+		$this->assertSame(
+			'https://new.com/a',
+			$this->resolver()->resolve( 'https://new.com$1', [ '/a', '/a' ], '', false )
+		);
+	}
+
 	public function test_capture_in_external_target_cannot_change_host(): void {
+		// "@" is percent-encoded, so the host no longer matches the template's host.
+		$this->assertNull(
+			$this->resolver()->resolve( 'https://new.com$1', [ '@evil.com', '@evil.com' ], '', false )
+		);
+		// A leading dot would extend the host to new.com.evil.com.
+		$this->assertNull(
+			$this->resolver()->resolve( 'https://new.com$1', [ '.evil.com', '.evil.com' ], '', false )
+		);
+		// Port/userinfo-style injection is rejected too.
 		$this->assertNull(
 			$this->resolver()->resolve( 'https://other.org$1', [ '/x@evil.com', '@evil.com' ], '', false )
 		);
@@ -74,5 +90,31 @@ final class TargetResolverTest extends TestCase {
 
 	public function test_unsafe_template_rejected(): void {
 		$this->assertNull( $this->resolver()->resolve( 'javascript:alert(1)', [], '', false ) );
+	}
+
+	public function test_forwarded_query_is_kept_byte_for_byte(): void {
+		$this->assertSame(
+			'https://example.com/new?utm.source=x&a%20b=1',
+			$this->resolver()->resolve( '/new', [], 'utm.source=x&a%20b=1', true )
+		);
+	}
+
+	public function test_repeated_keys_and_valueless_flags_are_preserved(): void {
+		$this->assertSame(
+			'https://example.com/new?tag=a&tag=b',
+			$this->resolver()->resolve( '/new', [], 'tag=a&tag=b', true )
+		);
+		$this->assertSame(
+			'https://example.com/new?flag&x=1',
+			$this->resolver()->resolve( '/new?flag', [], 'x=1', true )
+		);
+		$this->assertSame(
+			'https://example.com/new?a%20b=1&c=3',
+			$this->resolver()->resolve( '/new?a%20b=1', [], 'a b=2&c=3', true )
+		);
+	}
+
+	public function test_overlong_result_after_query_merge_is_rejected(): void {
+		$this->assertNull( $this->resolver()->resolve( '/new', [], 'a=' . str_repeat( 'x', 2100 ), true ) );
 	}
 }
