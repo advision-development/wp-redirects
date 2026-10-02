@@ -130,9 +130,16 @@ final class NotFoundRepository {
 			ARRAY_A
 		);
 
+		// A source without a query also covers the same path logged with any query (tracking parameters and the like).
+		$any_query = false === strpos( $key, '?' );
+
 		$count = 0;
 		foreach ( is_array( $rows ) ? $rows : [] as $row ) {
-			if ( PathNormalizer::source_key( (string) $row['path'] ) === $key && $this->delete( (int) $row['id'] ) ) {
+			$row_key = PathNormalizer::source_key( (string) $row['path'] );
+			if ( $any_query ) {
+				$row_key = explode( '?', $row_key, 2 )[0];
+			}
+			if ( $row_key === $key && $this->delete( (int) $row['id'] ) ) {
 				++$count;
 			}
 		}

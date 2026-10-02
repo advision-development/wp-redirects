@@ -76,6 +76,44 @@ final class SlugWatcherTest extends WP_UnitTestCase {
 		$this->assertTrue( null === $alpha || ! $alpha->enabled, 'The live URL must not redirect.' );
 	}
 
+	public function test_existing_rule_is_only_updated_through_validation(): void {
+		$existing = $this->repo->insert( [ 'type' => 'exact', 'source' => '/hello/', 'target' => '/somewhere', 'status_code' => 302, 'enabled' => false ] );
+		add_filter(
+			'adv_redirects_auto_redirect',
+			static function ( $data ) {
+				$data['target'] = '//evil.example/phish';
+				return $data;
+			}
+		);
+
+		$post_id = self::factory()->post->create( [ 'post_name' => 'hello', 'post_status' => 'publish' ] );
+		wp_update_post( [ 'ID' => $post_id, 'post_name' => 'hello-new' ] );
+
+		$rule = $this->repo->find( $existing->id );
+		$this->assertSame( '/somewhere', $rule->target, 'An invalid filtered target must not reach the rule.' );
+		$this->assertSame( 302, $rule->status_code );
+		$this->assertFalse( $rule->enabled );
+	}
+
+	public function test_existing_rule_takes_a_valid_filtered_target(): void {
+		$existing = $this->repo->insert( [ 'type' => 'exact', 'source' => '/hello/', 'target' => '/somewhere', 'status_code' => 302, 'enabled' => false ] );
+		add_filter(
+			'adv_redirects_auto_redirect',
+			static function ( $data ) {
+				$data['target'] = '/custom-landing/';
+				return $data;
+			}
+		);
+
+		$post_id = self::factory()->post->create( [ 'post_name' => 'hello', 'post_status' => 'publish' ] );
+		wp_update_post( [ 'ID' => $post_id, 'post_name' => 'hello-new' ] );
+
+		$rule = $this->repo->find( $existing->id );
+		$this->assertSame( '/custom-landing/', $rule->target );
+		$this->assertSame( 301, $rule->status_code );
+		$this->assertTrue( $rule->enabled );
+	}
+
 	public function test_filter_can_cancel(): void {
 		add_filter( 'adv_redirects_auto_redirect', '__return_false' );
 		$post_id = self::factory()->post->create( [ 'post_name' => 'keep', 'post_status' => 'publish' ] );

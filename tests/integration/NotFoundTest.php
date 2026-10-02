@@ -95,6 +95,30 @@ final class NotFoundTest extends WP_UnitTestCase {
 		$this->assertSame( [ '/old-page-2', '/old-page-zzz' ], $remaining );
 	}
 
+	public function test_query_less_redirect_also_clears_tracking_parameter_variants(): void {
+		foreach ( [ '/old', '/old/?fbclid=abc', '/old?utm_source=x', '/old-other?utm_source=x', '/old/sub?x=1', '/other?next=/old' ] as $path ) {
+			$this->logger->log_request( $path, 'GET', '' );
+		}
+		$this->logger->register();
+
+		( new Repository() )->insert( [ 'type' => 'exact', 'source' => '/old', 'target' => '/new', 'status_code' => 301 ] );
+
+		$remaining = array_column( $this->repo->query( [ 'orderby' => 'path', 'order' => 'asc' ] )['items'], 'path' );
+		$this->assertSame( [ '/old-other?utm_source=x', '/old/sub?x=1', '/other?next=/old' ], $remaining );
+	}
+
+	public function test_redirect_with_a_query_only_clears_that_exact_query(): void {
+		foreach ( [ '/old?page=2', '/old?page=3', '/old' ] as $path ) {
+			$this->logger->log_request( $path, 'GET', '' );
+		}
+		$this->logger->register();
+
+		( new Repository() )->insert( [ 'type' => 'exact', 'source' => '/old?page=2', 'target' => '/new', 'status_code' => 301 ] );
+
+		$remaining = array_column( $this->repo->query( [ 'orderby' => 'path', 'order' => 'asc' ] )['items'], 'path' );
+		$this->assertSame( [ '/old', '/old?page=3' ], $remaining );
+	}
+
 	public function test_invalid_utf8_path_is_logged_not_blanked(): void {
 		// WP < 6.9 strips the invalid byte, WP >= 6.9 replaces it with U+FFFD; either way the valid prefix survives.
 		$cleaned = NotFoundLogger::clean( "/caf\xE9" );

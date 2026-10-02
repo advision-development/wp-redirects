@@ -79,6 +79,19 @@ final class ValidatorTest extends WP_UnitTestCase {
 		$this->assertNull( $gone['data']['target'] );
 	}
 
+	public function test_exact_rules_reject_capture_references_in_target(): void {
+		foreach ( [ 'https://new.com$1', '/new/$1', '/new?x=$9' ] as $target ) {
+			$result = $this->validator->validate( [ 'type' => 'exact', 'source' => '/a', 'target' => $target, 'status_code' => 301 ] );
+			$this->assertWPError( $result, $target );
+			$this->assertSame( 'adv_redirects_invalid_target', $result->get_error_code(), $target );
+			$this->assertStringContainsString( 'only work in regex', $result->get_error_message(), $target );
+		}
+
+		// A plain dollar sign or $0 is literal and stays allowed, and regex rules keep their captures.
+		$this->valid( [ 'type' => 'exact', 'source' => '/a', 'target' => '/price-$0', 'status_code' => 301 ] );
+		$this->valid( [ 'type' => 'regex', 'source' => '^/a/(.*)$', 'target' => '/new/$1', 'status_code' => 301 ] );
+	}
+
 	public function test_capture_directly_after_host_is_allowed(): void {
 		$result = $this->valid( [ 'type' => 'regex', 'source' => '^(/.*)$', 'target' => 'https://new.com$1', 'status_code' => 301 ] );
 		$this->assertSame( 'https://new.com$1', $result['data']['target'] );
@@ -127,9 +140,13 @@ final class ValidatorTest extends WP_UnitTestCase {
 		$this->valid( $input );
 	}
 
-	public function test_exact_rule_with_literal_capture_syntax_still_loop_checked(): void {
+	public function test_exact_rule_with_literal_dollar_syntax_still_loop_checked(): void {
+		// $1-$9 are rejected in exact targets, but a source or target with a literal "$0" is plain text.
 		$this->save( [ 'type' => 'exact', 'source' => '/lb$1', 'target' => '/la', 'status_code' => 301 ] );
-		$this->assertSame( 'adv_redirects_loop', $this->error_code( [ 'type' => 'exact', 'source' => '/la', 'target' => '/lb$1', 'status_code' => 301 ] ) );
+		$this->assertSame( 'adv_redirects_invalid_target', $this->error_code( [ 'type' => 'exact', 'source' => '/la', 'target' => '/lb$1', 'status_code' => 301 ] ) );
+
+		$this->save( [ 'type' => 'exact', 'source' => '/lc$0', 'target' => '/ld', 'status_code' => 301 ] );
+		$this->assertSame( 'adv_redirects_loop', $this->error_code( [ 'type' => 'exact', 'source' => '/ld', 'target' => '/lc$0', 'status_code' => 301 ] ) );
 	}
 
 	public function test_loop_through_regex_rejected(): void {

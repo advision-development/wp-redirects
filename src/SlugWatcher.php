@@ -121,14 +121,25 @@ final class SlugWatcher {
 
 		$existing = $this->repository->exact_rule_by_key( PathNormalizer::source_key( $old ) );
 		if ( null !== $existing ) {
-			$this->repository->update(
-				$existing->id,
+			// The filtered target gets the same checks as any saved rule. When invalid, the rule stays as it is.
+			$result = $this->validator->validate(
 				[
-					'target'      => $data['target'],
+					'target'      => $data['target'] ?? $new,
 					'status_code' => 301,
 					'enabled'     => true,
-				]
+				],
+				$existing->id
 			);
+			if ( ! is_wp_error( $result ) ) {
+				$this->repository->update(
+					$existing->id,
+					[
+						'target'      => $result['data']['target'],
+						'status_code' => 301,
+						'enabled'     => true,
+					]
+				);
+			}
 			return;
 		}
 

@@ -85,6 +85,10 @@ final class Validator {
 			if ( is_wp_error( $checked ) ) {
 				return $checked;
 			}
+			// Only the regex runtime substitutes captures, so an exact rule would send "$1" literally.
+			if ( 'exact' === $type && preg_match( '/\$[1-9]/', $target ) ) {
+				return self::error( 'adv_redirects_invalid_target', __( 'Capture references ($1-$9) only work in regex redirects.', 'wp-redirects' ) );
+			}
 		}
 
 		if ( 'exact' === $type ) {
