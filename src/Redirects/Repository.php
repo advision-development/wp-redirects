@@ -77,6 +77,15 @@ final class Repository {
 		return null;
 	}
 
+	public function regex_rule_by_source( string $source ): ?Rule {
+		foreach ( $this->all() as $rule ) {
+			if ( 'regex' === $rule->type && $rule->source === $source ) {
+				return $rule;
+			}
+		}
+		return null;
+	}
+
 	/**
 	 * Inserts already-validated data.
 	 */

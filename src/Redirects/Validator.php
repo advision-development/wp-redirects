@@ -33,11 +33,13 @@ final class Validator {
 	}
 
 	/**
-	 * @param array    $input Raw fields (type, source, target, status_code, enabled, note). Missing fields keep existing values on update.
-	 * @param int|null $id    Rule being updated, or null for a new rule.
+	 * @param array    $input   Raw fields (type, source, target, status_code, enabled, note). Missing fields keep existing values on update.
+	 * @param int|null $id      Rule being updated, or null for a new rule.
+	 * @param array    $pending Rows not yet saved (e.g. earlier rules in an import), shaped like Repository::enabled_rows().
+	 *                          A pending row with an existing rule's id replaces that rule in the loop/chain walk.
 	 * @return array{data:array,warnings:array}|\WP_Error
 	 */
-	public function validate( array $input, ?int $id = null ) {
+	public function validate( array $input, ?int $id = null, array $pending = [] ) {
 		$existing = null;
 		if ( null !== $id ) {
 			$existing = $this->repository->find( $id );
@@ -142,7 +144,7 @@ final class Validator {
 			$chain = $this->chains->resolve(
 				$source,
 				$start,
-				$this->ruleset_with( $data, $id, $existing ),
+				$this->ruleset_with( $data, $id, $existing, $pending ),
 				'exact' === $type ? PathNormalizer::source_key( $source ) : null,
 				$forward
 			);
@@ -240,15 +242,28 @@ final class Validator {
 		return true;
 	}
 
-	private function ruleset_with( array $data, ?int $id, ?Rule $existing ): array {
+	private function ruleset_with( array $data, ?int $id, ?Rule $existing, array $pending = [] ): array {
+		$replaced = array_map(
+			static function ( array $row ): int {
+				return (int) $row['id'];
+			},
+			$pending
+		);
+
 		$rows = array_values(
 			array_filter(
 				$this->repository->enabled_rows(),
-				static function ( array $row ) use ( $id ): bool {
-					return (int) $row['id'] !== (int) $id;
+				static function ( array $row ) use ( $id, $replaced ): bool {
+					return (int) $row['id'] !== (int) $id && ! in_array( (int) $row['id'], $replaced, true );
 				}
 			)
 		);
+
+		foreach ( $pending as $row ) {
+			if ( (int) $row['id'] !== (int) $id ) {
+				$rows[] = $row;
+			}
+		}
 
 		$rows[] = [
 			'id'          => (int) $id,

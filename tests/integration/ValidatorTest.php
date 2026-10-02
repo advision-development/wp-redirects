@@ -199,4 +199,27 @@ final class ValidatorTest extends WP_UnitTestCase {
 		$this->assertStringStartsWith( 'hi', $result['data']['note'] );
 		$this->assertSame( 255, mb_strlen( $result['data']['note'] ) );
 	}
+
+	public function test_pending_rows_join_the_loop_check(): void {
+		$pending = [
+			[ 'id' => -1, 'type' => 'exact', 'source' => '/pa', 'target' => '/pb', 'status_code' => 301, 'position' => 0 ],
+		];
+		$this->valid( [ 'type' => 'exact', 'source' => '/pb', 'target' => '/pa', 'status_code' => 301 ] );
+		$result = $this->validator->validate( [ 'type' => 'exact', 'source' => '/pb', 'target' => '/pa', 'status_code' => 301 ], null, $pending );
+		$this->assertWPError( $result );
+		$this->assertSame( 'adv_redirects_loop', $result->get_error_code() );
+	}
+
+	public function test_pending_rows_replace_existing_rows_with_the_same_id(): void {
+		$x = $this->save( [ 'type' => 'exact', 'source' => '/x', 'target' => '/y', 'status_code' => 301 ] );
+		// Against the database, /y → /x loops (x → y → x).
+		$this->assertSame( 'adv_redirects_loop', $this->error_code( [ 'type' => 'exact', 'source' => '/y', 'target' => '/x', 'status_code' => 301 ] ) );
+		// The import is about to repoint /x to /z, so /y → /x is fine (y → x → z).
+		$pending = [
+			[ 'id' => $x, 'type' => 'exact', 'source' => '/x', 'target' => '/z', 'status_code' => 301, 'position' => 0 ],
+		];
+		$result  = $this->validator->validate( [ 'type' => 'exact', 'source' => '/y', 'target' => '/x', 'status_code' => 301 ], null, $pending );
+		$this->assertIsArray( $result );
+		$this->assertSame( [ '/y', '/x', '/z' ], $result['warnings'][0]['hops'] );
+	}
 }

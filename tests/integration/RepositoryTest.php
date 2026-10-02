@@ -206,4 +206,11 @@ final class RepositoryTest extends WP_UnitTestCase {
 
 		$this->assertFalse( wp_cache_get( RuleCache::KEY, RuleCache::GROUP ) );
 	}
+
+	public function test_regex_rule_by_source_matches_exact_pattern_only(): void {
+		$rule = $this->repo->insert( [ 'type' => 'regex', 'source' => '^/a/(.*)$', 'target' => '/b/$1', 'status_code' => 301 ] );
+		$this->exact( '^/a/(.*)$', '/x' );
+		$this->assertSame( $rule->id, $this->repo->regex_rule_by_source( '^/a/(.*)$' )->id );
+		$this->assertNull( $this->repo->regex_rule_by_source( '^/A/(.*)$' ) );
+	}
 }
