@@ -3,7 +3,7 @@
  * Plugin Name:       WP Redirects
  * Plugin URI:        https://github.com/advision-development/wp-redirects
  * Description:       Exact and regex redirects with selectable status codes, object-cached matching, hit counts, slug-change redirects and a 404 log.
- * Version:           0.1.0
+ * Version:           1.0.0
  * Requires at least: 6.6
  * Requires PHP:      7.4
  * Author:            Advision Development
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'ADV_REDIRECTS_VERSION', '0.1.0' );
+define( 'ADV_REDIRECTS_VERSION', '1.0.0' );
 define( 'ADV_REDIRECTS_FILE', __FILE__ );
 define( 'ADV_REDIRECTS_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ADV_REDIRECTS_URL', plugin_dir_url( __FILE__ ) );

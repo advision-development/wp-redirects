@@ -4,7 +4,7 @@ Tags: redirects, 301, 404, regex, seo
 Requires at least: 6.6
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,5 +27,12 @@ Exact and regex redirects with selectable status codes, object-cached matching, 
 
 == Changelog ==
 
-= 0.1.0 =
+= 1.0.0 =
 * Initial release.
+* Exact and regex redirects with 301, 302, 307, 308, 410 and 451 responses, matched from an object-cached compiled rule set.
+* Loop prevention, redirect-chain warnings with a one-click fix, and protection for WordPress system paths.
+* Hit counts, automatic redirects on slug changes, a 404 log and a Test URL tool.
+* Import from a Redirection plugin JSON export with a dry-run preview.
+* Shows who created and last edited each redirect.
+* Paged rules tables (25, 50, 100 or all rows).
+* Self-updates from GitHub Releases.
