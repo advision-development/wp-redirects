@@ -84,6 +84,7 @@ export default function RulesPager( {
 			</VisuallyHidden>
 			<SelectControl
 				__nextHasNoMarginBottom
+				size="compact"
 				className="adv-redirects-pager__size"
 				label={ __( 'Rows per page', 'wp-redirects' ) }
 				labelPosition="side"

@@ -125,6 +125,13 @@ export default function RulesTable( {
 		() => paginate( visible, page, pageSize ),
 		[ visible, page, pageSize ]
 	);
+	// Keep the stored page in step with the clamped one, so a list that grows
+	// again after deletes doesn't flip back to a page the user already left.
+	useEffect( () => {
+		if ( page !== pageInfo.page ) {
+			setPage( pageInfo.page );
+		}
+	}, [ page, pageInfo.page ] );
 	const pageRules = pageInfo.items;
 	const pageIds = useMemo(
 		() => pageRules.map( ( rule ) => rule.id ),

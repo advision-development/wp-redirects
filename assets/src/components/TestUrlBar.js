@@ -1,5 +1,5 @@
 import { Button, TextControl } from '@wordpress/components';
-import { useRef, useState } from '@wordpress/element';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage } from '../constants';
@@ -28,6 +28,8 @@ function showRule( ruleId ) {
 
 function MatchedRule( { result, rule, onReveal } ) {
 	const [ hidden, setHidden ] = useState( false );
+	const frame = useRef( null );
+	useEffect( () => () => window.cancelAnimationFrame( frame.current ), [] );
 	if ( ! rule ) {
 		return null;
 	}
@@ -45,12 +47,13 @@ function MatchedRule( { result, rule, onReveal } ) {
 			if ( showRule( result.rule_id ) ) {
 				setHidden( false );
 			} else if ( ++tries < 3 ) {
-				window.requestAnimationFrame( retry );
+				frame.current = window.requestAnimationFrame( retry );
 			} else {
 				setHidden( true );
 			}
 		};
-		window.requestAnimationFrame( retry );
+		window.cancelAnimationFrame( frame.current );
+		frame.current = window.requestAnimationFrame( retry );
 	};
 	return (
 		<span className="adv-redirects-test__rule">
