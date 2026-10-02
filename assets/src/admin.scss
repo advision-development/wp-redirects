@@ -598,3 +598,13 @@
 		margin-top: 12px;
 	}
 }
+
+// Keeps the Import tab mounted while another tab is shown.
+.adv-redirects-import-pane {
+	display: grid;
+	gap: var(--adv-gap);
+
+	&[hidden] {
+		display: none;
+	}
+}

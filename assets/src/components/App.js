@@ -102,12 +102,16 @@ export default function App() {
 						<Spinner />
 					</div>
 				) }
-				{ tab === 'import' && (
+				{ /* Stays mounted so switching tabs never interrupts a running import. */ }
+				<div
+					className="adv-redirects-import-pane"
+					hidden={ tab !== 'import' }
+				>
 					<ImportTab
 						onImported={ redirects.reload }
 						onViewRedirects={ () => setTab( 'redirects' ) }
 					/>
-				) }
+				</div>
 			</div>
 			<SnackbarList
 				notices={ notices }

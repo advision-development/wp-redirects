@@ -1,5 +1,5 @@
 import { Button, Notice, Spinner } from '@wordpress/components';
-import { useId, useRef, useState } from '@wordpress/element';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage } from '../constants';
@@ -25,13 +25,17 @@ function downloadJson( data, filename ) {
 	document.body.appendChild( link );
 	link.click();
 	link.remove();
-	URL.revokeObjectURL( url );
+	// Give the browser a tick to start the download before releasing the blob.
+	setTimeout( () => URL.revokeObjectURL( url ), 0 );
 }
 
 export default function ImportTab( { onImported, onViewRedirects } ) {
-	const inputId = useId();
 	const inputRef = useRef();
 	const cancelRef = useRef( false );
+	const readCounter = useRef( 0 );
+	const previewHeadingRef = useRef();
+	const cancelButtonRef = useRef();
+	const resultRef = useRef();
 	// idle | checked | previewing | previewed | importing | done | failed
 	const [ phase, setPhase ] = useState( 'idle' );
 	const [ fileName, setFileName ] = useState( '' );
@@ -42,8 +46,29 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 	const [ result, setResult ] = useState( null );
 	const [ requestError, setRequestError ] = useState( '' );
 	const [ dragging, setDragging ] = useState( false );
+	const [ cancelling, setCancelling ] = useState( false );
+
+	// If the tab is ever unmounted mid-import, stop posting further batches.
+	useEffect( () => {
+		return () => {
+			cancelRef.current = true;
+		};
+	}, [] );
+
+	// Move focus to where the next step is, so keyboard and screen reader users
+	// are not left on an element that just disappeared.
+	useEffect( () => {
+		if ( phase === 'previewed' ) {
+			previewHeadingRef.current?.focus();
+		} else if ( phase === 'importing' ) {
+			cancelButtonRef.current?.focus();
+		} else if ( phase === 'done' || phase === 'failed' ) {
+			resultRef.current?.focus();
+		}
+	}, [ phase ] );
 
 	const reset = () => {
+		setCancelling( false );
 		setPhase( 'idle' );
 		setFileName( '' );
 		setCheck( null );
@@ -61,12 +86,20 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 		if ( ! file ) {
 			return;
 		}
+		const readId = ++readCounter.current;
 		reset();
 		setFileName( file.name );
 		let data;
 		try {
-			data = JSON.parse( await file.text() );
+			const text = await file.text();
+			if ( readId !== readCounter.current ) {
+				return;
+			}
+			data = JSON.parse( text );
 		} catch {
+			if ( readId !== readCounter.current ) {
+				return;
+			}
 			setCheck( {
 				ok: false,
 				errors: [
@@ -100,6 +133,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 		const totals = { created: 0, updated: 0, skipped: [] };
 		let done = 0;
 		cancelRef.current = false;
+		setCancelling( false );
 		setProgress( { done: 0, total: entries.length } );
 		setPhase( 'importing' );
 		try {
@@ -128,7 +162,12 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 				done += batch.length;
 				setProgress( { done, total: entries.length } );
 			}
-			setResult( { ...totals, done, cancelled: done < entries.length } );
+			setResult( {
+				...totals,
+				done,
+				cancelled: done < entries.length,
+				notRun: entries.length - done,
+			} );
 			setPhase( 'done' );
 		} catch ( error ) {
 			setResult( { ...totals, done, failed: errorMessage( error ) } );
@@ -141,6 +180,69 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 	const counts = preview ? preview.counts : null;
 	const importCount = counts ? counts.new + counts.overwrite : 0;
 	const busy = phase === 'previewing' || phase === 'importing';
+	let resultMessage = '';
+	if ( result && phase === 'failed' ) {
+		const imported = result.created + result.updated;
+		const reason = result.failed.replace( /\.+$/, '' );
+		resultMessage =
+			imported > 0
+				? sprintf(
+						/* translators: 1: error message, 2: rules imported before the failure */
+						_n(
+							'Import stopped: %1$s. At least %2$d redirect was imported before it stopped; running the import again is safe.',
+							'Import stopped: %1$s. At least %2$d redirects were imported before it stopped; running the import again is safe.',
+							imported,
+							'wp-redirects'
+						),
+						reason,
+						imported
+					)
+				: sprintf(
+						/* translators: %s: error message */
+						__(
+							'Import stopped: %s. No redirects were confirmed as imported; running the import again is safe.',
+							'wp-redirects'
+						),
+						reason
+					);
+	} else if ( result && result.cancelled ) {
+		resultMessage = sprintf(
+			/* translators: 1: created, 2: updated, 3: skipped, 4: not imported */
+			__(
+				'Import cancelled: %1$d created, %2$d updated, %3$d skipped; %4$d not imported.',
+				'wp-redirects'
+			),
+			result.created,
+			result.updated,
+			result.skipped.length + counts.skipped,
+			result.notRun
+		);
+	} else if ( result ) {
+		resultMessage = sprintf(
+			/* translators: 1: created, 2: updated, 3: skipped */
+			__(
+				'Import complete: %1$d created, %2$d updated, %3$d skipped.',
+				'wp-redirects'
+			),
+			result.created,
+			result.updated,
+			result.skipped.length + counts.skipped
+		);
+	}
+	const announcement =
+		phase === 'previewed' && counts
+			? sprintf(
+					/* translators: 1: new, 2: overwrite, 3: skipped, 4: superseded */
+					__(
+						'Preview ready: %1$d new, %2$d overwrite, %3$d skipped, %4$d superseded.',
+						'wp-redirects'
+					),
+					counts.new,
+					counts.overwrite,
+					counts.skipped,
+					counts.superseded
+				)
+			: '';
 	const percent = progress.total
 		? Math.round( ( progress.done / progress.total ) * 100 )
 		: 0;
@@ -174,7 +276,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 				>
 					<input
 						ref={ inputRef }
-						id={ inputId }
+						tabIndex={ -1 }
 						type="file"
 						accept=".json,application/json"
 						className="adv-redirects-import__input"
@@ -200,6 +302,10 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 							__( 'or drop a .json file here', 'wp-redirects' ) }
 					</span>
 				</div>
+
+				<p className="screen-reader-text" role="status">
+					{ announcement }
+				</p>
 
 				{ check && ! check.ok && (
 					<Notice status="error" isDismissible={ false }>
@@ -279,7 +385,11 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 
 			{ preview && phase !== 'done' && phase !== 'failed' && (
 				<section className="adv-redirects-card">
-					<h2 className="adv-redirects-card__title">
+					<h2
+						className="adv-redirects-card__title"
+						ref={ previewHeadingRef }
+						tabIndex={ -1 }
+					>
 						{ __( 'Preview', 'wp-redirects' ) }
 					</h2>
 					<ImportPreview preview={ preview } />
@@ -314,8 +424,8 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 									) }
 						</Button>
 					) }
-					{ phase === 'importing' && (
-						<div className="adv-redirects-import__progress">
+					<div className="adv-redirects-import__progress">
+						{ phase === 'importing' && (
 							<progress
 								max={ progress.total }
 								value={ progress.done }
@@ -324,64 +434,59 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 									'wp-redirects'
 								) }
 							/>
-							<p aria-live="polite">
-								{ sprintf(
-									/* translators: 1: imported so far, 2: total, 3: percent */
-									__(
-										'Imported %1$d of %2$d (%3$d%%)',
-										'wp-redirects'
-									),
-									progress.done,
-									progress.total,
-									percent
-								) }{ ' ' }
-								<Spinner />
-							</p>
+						) }
+						{ /* Always mounted so the first update is announced. */ }
+						<p aria-live="polite">
+							{ phase === 'importing' && (
+								<>
+									{ cancelling
+										? __(
+												'Cancelling after this batch…',
+												'wp-redirects'
+											)
+										: sprintf(
+												/* translators: 1: imported so far, 2: total, 3: percent */
+												__(
+													'Imported %1$d of %2$d (%3$d%%)',
+													'wp-redirects'
+												),
+												progress.done,
+												progress.total,
+												percent
+											) }{ ' ' }
+									<Spinner />
+								</>
+							) }
+						</p>
+						{ phase === 'importing' && (
 							<Button
+								ref={ cancelButtonRef }
 								variant="secondary"
-								onClick={ () => ( cancelRef.current = true ) }
+								aria-disabled={ cancelling }
+								onClick={ () => {
+									if ( ! cancelling ) {
+										cancelRef.current = true;
+										setCancelling( true );
+									}
+								} }
 							>
 								{ __( 'Cancel', 'wp-redirects' ) }
 							</Button>
-						</div>
-					) }
+						) }
+					</div>
 				</section>
 			) }
 
 			{ result && (
 				<section className="adv-redirects-card">
-					<Notice
-						status={ phase === 'failed' ? 'error' : 'success' }
-						isDismissible={ false }
-					>
-						{ phase === 'failed'
-							? sprintf(
-									/* translators: 1: error message, 2: rules imported before the failure */
-									__(
-										'Import stopped: %1$s. %2$d redirects were imported before it stopped; running the import again is safe.',
-										'wp-redirects'
-									),
-									result.failed,
-									result.created + result.updated
-								)
-							: sprintf(
-									/* translators: 1: created, 2: updated, 3: skipped */
-									__(
-										'Import complete: %1$d created, %2$d updated, %3$d skipped.',
-										'wp-redirects'
-									),
-									result.created,
-									result.updated,
-									result.skipped.length + counts.skipped
-								) }
-						{ result.cancelled &&
-							phase === 'done' &&
-							' ' +
-								__(
-									'Cancelled before all batches ran.',
-									'wp-redirects'
-								) }
-					</Notice>
+					<div ref={ resultRef } tabIndex={ -1 }>
+						<Notice
+							status={ phase === 'failed' ? 'error' : 'success' }
+							isDismissible={ false }
+						>
+							{ resultMessage }
+						</Notice>
+					</div>
 					<div className="adv-redirects-import__actions">
 						<Button
 							variant="secondary"
