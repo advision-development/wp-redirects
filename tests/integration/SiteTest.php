@@ -37,6 +37,14 @@ final class SiteTest extends WP_UnitTestCase {
 		$this->assertFalse( Site::is_reserved_path( '/blog/wp-admin' ) );
 	}
 
+	public function test_reserved_paths_with_core_in_subdirectory(): void {
+		update_option( 'siteurl', 'http://example.org/wp' );
+		$this->assertTrue( Site::is_reserved_path( '/wp/wp-admin/options.php' ) );
+		$this->assertTrue( Site::is_reserved_path( '/wp/wp-login.php' ) );
+		$this->assertTrue( Site::is_reserved_path( '/wp-login.php' ) );
+		$this->assertFalse( Site::is_reserved_path( '/wp/other' ) );
+	}
+
 	public function test_resolver_applies_allowed_hosts_filter(): void {
 		add_filter(
 			'adv_redirects_allowed_target_hosts',

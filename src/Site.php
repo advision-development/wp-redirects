@@ -76,7 +76,23 @@ final class Site {
 	 * @return string[]
 	 */
 	public static function reserved_prefixes(): array {
-		return [ '/wp-admin', '/wp-login.php', '/xmlrpc.php', '/wp-cron.php', '/' . trim( rest_get_url_prefix(), '/' ) ];
+		$prefixes = [ '/wp-admin', '/wp-login.php', '/xmlrpc.php', '/wp-cron.php', '/' . trim( rest_get_url_prefix(), '/' ) ];
+
+		// WordPress core in a subdirectory: its entry points live under the site path, relative to home.
+		$site = wp_parse_url( site_url(), PHP_URL_PATH );
+		$site = is_string( $site ) ? rtrim( $site, '/' ) : '';
+		$home = self::home_path();
+		if ( '' !== $home && 0 === strpos( $site . '/', $home . '/' ) ) {
+			$site = substr( $site, strlen( $home ) );
+		}
+		if ( '' !== $site ) {
+			$site = PathNormalizer::key( $site );
+			foreach ( [ '/wp-admin', '/wp-login.php', '/xmlrpc.php', '/wp-cron.php' ] as $entry ) {
+				$prefixes[] = $site . $entry;
+			}
+		}
+
+		return $prefixes;
 	}
 
 	public static function is_reserved_path( string $path ): bool {

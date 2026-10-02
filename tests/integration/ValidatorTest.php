@@ -3,6 +3,7 @@
 use Advision\Redirects\Redirects\ChainResolver;
 use Advision\Redirects\Redirects\Repository;
 use Advision\Redirects\Redirects\Validator;
+use Advision\Redirects\Settings;
 
 final class ValidatorTest extends WP_UnitTestCase {
 
@@ -83,6 +84,12 @@ final class ValidatorTest extends WP_UnitTestCase {
 		$this->assertSame( 'https://new.com$1', $result['data']['target'] );
 	}
 
+	public function test_capture_in_host_rejected(): void {
+		foreach ( [ 'https://$1/x', 'https://$1', 'https://new.com$1.evil.com/', 'https://new.com$1:8080/' ] as $target ) {
+			$this->assertSame( 'adv_redirects_invalid_target', $this->error_code( [ 'type' => 'regex', 'source' => '^/(.*)$', 'target' => $target, 'status_code' => 301 ] ), $target );
+		}
+	}
+
 	public function test_invalid_status_and_type(): void {
 		$this->assertSame( 'adv_redirects_invalid_status', $this->error_code( [ 'type' => 'exact', 'source' => '/a', 'target' => '/b', 'status_code' => 303 ] ) );
 		$this->assertSame( 'adv_redirects_invalid_type', $this->error_code( [ 'type' => 'glob', 'source' => '/a', 'target' => '/b', 'status_code' => 301 ] ) );
@@ -110,6 +117,19 @@ final class ValidatorTest extends WP_UnitTestCase {
 		$this->assertWPError( $result );
 		$this->assertSame( 'adv_redirects_loop', $result->get_error_code() );
 		$this->assertSame( 'Creates a loop: /a → /b → /a', $result->get_error_message() );
+	}
+
+	public function test_query_forwarding_loop_rejected_unless_forwarding_off(): void {
+		$input = [ 'type' => 'exact', 'source' => '/qa?x=1', 'target' => '/qa', 'status_code' => 301 ];
+		$this->assertSame( 'adv_redirects_loop', $this->error_code( $input ) );
+
+		Settings::update( [ 'forward_query_string' => false ] );
+		$this->valid( $input );
+	}
+
+	public function test_exact_rule_with_literal_capture_syntax_still_loop_checked(): void {
+		$this->save( [ 'type' => 'exact', 'source' => '/lb$1', 'target' => '/la', 'status_code' => 301 ] );
+		$this->assertSame( 'adv_redirects_loop', $this->error_code( [ 'type' => 'exact', 'source' => '/la', 'target' => '/lb$1', 'status_code' => 301 ] ) );
 	}
 
 	public function test_loop_through_regex_rejected(): void {

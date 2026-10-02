@@ -10,7 +10,9 @@ namespace Advision\Redirects\Redirects;
 use Advision\Redirects\Matching\PathNormalizer;
 use Advision\Redirects\Matching\Pattern;
 use Advision\Redirects\Matching\RulesetCompiler;
+use Advision\Redirects\Matching\TargetResolver;
 use Advision\Redirects\Matching\UrlSafety;
+use Advision\Redirects\Settings;
 use Advision\Redirects\Site;
 
 defined( 'ABSPATH' ) || exit;
@@ -126,12 +128,19 @@ final class Validator {
 		}
 
 		$warnings = [];
-		if ( $enabled && null !== $target && ! preg_match( '/\$[1-9]/', $target ) ) {
+		if ( $enabled && null !== $target && ! ( 'regex' === $type && preg_match( '/\$[1-9]/', $target ) ) ) {
+			$forward = (bool) Settings::get( 'forward_query_string' );
+			$start   = $target;
+			if ( $forward && 'exact' === $type && false !== strpos( $source, '?' ) ) {
+				// The runtime appends the request's query to the target, so walk from the merged URL.
+				$start = TargetResolver::merge_query( $target, explode( '?', $source, 2 )[1] );
+			}
 			$chain = $this->chains->resolve(
 				$source,
-				$target,
+				$start,
 				$this->ruleset_with( $data, $id, $existing ),
-				'exact' === $type ? PathNormalizer::source_key( $source ) : null
+				'exact' === $type ? PathNormalizer::source_key( $source ) : null,
+				$forward
 			);
 			if ( $chain['loop'] ) {
 				return self::error(
@@ -215,6 +224,9 @@ final class Validator {
 		}
 
 		$host = UrlSafety::host_of( (string) preg_replace( '/\$[1-9]/', '', $target ), Site::host() );
+		if ( '' === $host ) {
+			return self::error( 'adv_redirects_invalid_target', __( 'Capture references ($1-$9) cannot be used in the host.', 'wp-redirects' ) );
+		}
 
 		/** This filter is documented in src/Site.php */
 		$allowed = array_map( 'strtolower', (array) apply_filters( 'adv_redirects_allowed_target_hosts', [] ) );
