@@ -5,8 +5,8 @@
 	"scripts": {
 		"build": "wp-scripts build assets/src/index.js --output-path=build",
 		"start": "wp-scripts start assets/src/index.js --output-path=build",
-		"lint:js": "wp-scripts lint-js --no-error-on-unmatched-pattern assets/src tests/js tests/e2e",
-		"format": "wp-scripts format assets/src tests/js",
+		"lint:js": "wp-scripts lint-js assets/src tests/js tests/e2e",
+		"format": "wp-scripts format assets/src tests/js tests/e2e",
 		"test:js": "jest",
 		"test:e2e": "wp-scripts test-playwright",
 		"env:start": "wp-env start && wp-env run tests-cli wp rewrite structure '/%postname%/'",
