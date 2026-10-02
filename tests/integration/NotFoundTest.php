@@ -120,10 +120,12 @@ final class NotFoundTest extends WP_UnitTestCase {
 	}
 
 	public function test_invalid_utf8_path_is_logged_not_blanked(): void {
-		// WP < 6.9 strips the invalid byte, WP >= 6.9 replaces it with U+FFFD; either way the valid prefix survives.
-		$cleaned = NotFoundLogger::clean( "/caf\xE9" );
-		$this->assertSame( 0, strpos( $cleaned, '/caf' ) );
-		$this->assertTrue( mb_check_encoding( $cleaned, 'UTF-8' ) );
+		// Each invalid byte becomes U+FFFD on every WordPress version; valid multibyte text is kept.
+		$this->assertSame( "/caf\u{FFFD}", NotFoundLogger::clean( "/caf\xE9" ) );
+		$this->assertSame( "/a\u{FFFD}\u{FFFD}b", NotFoundLogger::clean( "/a\xE2\x82b" ) );
+		$this->assertSame( "/\u{FFFD}\u{FFFD}", NotFoundLogger::clean( "/\xC0\xAF" ) );
+		$this->assertSame( '/café/日本', NotFoundLogger::clean( '/café/日本' ) );
+		$this->assertSame( '/tab', NotFoundLogger::clean( "/t\x00a\tb" ) );
 
 		$this->assertTrue( $this->logger->log_request( '/caf%E9', 'GET', '' ) );
 		$this->assertTrue( $this->logger->log_request( '/other%FF', 'GET', '' ) );
@@ -137,8 +139,7 @@ final class NotFoundTest extends WP_UnitTestCase {
 	public function test_invalid_utf8_referrer_is_not_blanked(): void {
 		$this->logger->log_request( '/missing', 'GET', "https://ref.example/caf\xE9" );
 		$referrer = $this->repo->query( [] )['items'][0]['last_referrer'];
-		$this->assertSame( 0, strpos( $referrer, 'https://ref.example/caf' ) );
-		$this->assertTrue( mb_check_encoding( $referrer, 'UTF-8' ) );
+		$this->assertSame( "https://ref.example/caf\u{FFFD}", $referrer );
 	}
 
 	public function test_prune_by_age_and_row_cap(): void {

@@ -96,9 +96,28 @@ final class NotFoundLogger {
 	}
 
 	public static function clean( string $value ): string {
-		// Strip invalid UTF-8 first: preg_replace() with /u returns null on it, which would blank the whole value.
-		$value = wp_check_invalid_utf8( $value, true );
+		// Scrub invalid UTF-8 first: preg_replace() with /u returns null on it, which would blank the whole value.
+		$value = self::scrub_utf8( $value );
 		$value = (string) preg_replace( '/[\x00-\x1F\x7F]/u', '', $value );
 		return mb_substr( $value, 0, 2048 );
+	}
+
+	/**
+	 * Replaces every byte that is not part of a valid UTF-8 sequence with U+FFFD.
+	 *
+	 * Not wp_check_invalid_utf8( $value, true ): before WP 6.9 that runs iconv(), which returns false on
+	 * invalid input, so the whole value would be blanked.
+	 */
+	private static function scrub_utf8( string $value ): string {
+		if ( preg_match( '//u', $value ) ) {
+			return $value;
+		}
+		return (string) preg_replace_callback(
+			'/[\x00-\x7F]|[\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}|\xF4[\x80-\x8F][\x80-\xBF]{2}|(.)/s',
+			static function ( array $groups ): string {
+				return isset( $groups[1] ) ? "\u{FFFD}" : $groups[0];
+			},
+			$value
+		);
 	}
 }
