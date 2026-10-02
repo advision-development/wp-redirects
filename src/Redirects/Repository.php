@@ -164,6 +164,9 @@ final class Repository {
 
 		$rule = $this->find( $id );
 		RuleCache::flush();
+		if ( null === $rule ) {
+			return null;
+		}
 		/**
 		 * Fires after a redirect is updated.
 		 *

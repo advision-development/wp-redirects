@@ -30,7 +30,11 @@ final class RuleCache {
 			return $cached;
 		}
 
-		$ruleset = RulesetCompiler::compile( $this->repository->enabled_rows() );
+		global $wpdb;
+		$rows      = $this->repository->enabled_rows();
+		$read_fail = '' !== $wpdb->last_error;
+
+		$ruleset = RulesetCompiler::compile( $rows );
 
 		/**
 		 * Filters the compiled rule set before it is cached.
@@ -42,7 +46,10 @@ final class RuleCache {
 			$ruleset = RulesetCompiler::empty_ruleset();
 		}
 
-		wp_cache_set( self::KEY, $ruleset, self::GROUP );
+		// A failed read must not be cached as "no redirects"; retry on the next request.
+		if ( ! $read_fail ) {
+			wp_cache_set( self::KEY, $ruleset, self::GROUP );
+		}
 		return $ruleset;
 	}
 

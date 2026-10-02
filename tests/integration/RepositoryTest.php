@@ -167,4 +167,43 @@ final class RepositoryTest extends WP_UnitTestCase {
 		);
 		$this->assertArrayHasKey( '/injected', ( new RuleCache( $this->repo ) )->get()['exact'] );
 	}
+
+	public function test_failed_read_is_not_cached(): void {
+		global $wpdb;
+		$this->exact( '/old', '/new' );
+		wp_cache_delete( RuleCache::KEY, RuleCache::GROUP );
+
+		$table = Advision\Redirects\Schema::redirects_table();
+		$break = static function ( $query ) use ( $table ) {
+			if ( false !== strpos( $query, 'WHERE enabled = 1' ) && false !== strpos( $query, $table ) ) {
+				return 'SELECT * FROM adv_redirects_table_that_does_not_exist';
+			}
+			return $query;
+		};
+		$cache = new RuleCache( $this->repo );
+		$prior = $wpdb->suppress_errors( true );
+		add_filter( 'query', $break );
+		try {
+			$ruleset = $cache->get();
+		} finally {
+			remove_filter( 'query', $break );
+			$wpdb->suppress_errors( $prior );
+		}
+
+		$this->assertSame( [], $ruleset['exact'] );
+		$this->assertFalse( wp_cache_get( RuleCache::KEY, RuleCache::GROUP ), 'A failed read must not be cached.' );
+
+		$this->assertArrayHasKey( '/old', $cache->get()['exact'] );
+		$this->assertIsArray( wp_cache_get( RuleCache::KEY, RuleCache::GROUP ) );
+	}
+
+	public function test_reorder_flushes_cache(): void {
+		$this->repo->insert( [ 'type' => 'regex', 'source' => '^/a', 'target' => '/a', 'status_code' => 301 ] );
+		( new RuleCache( $this->repo ) )->get();
+		$this->assertIsArray( wp_cache_get( RuleCache::KEY, RuleCache::GROUP ) );
+
+		$this->repo->reorder( [] );
+
+		$this->assertFalse( wp_cache_get( RuleCache::KEY, RuleCache::GROUP ) );
+	}
 }
