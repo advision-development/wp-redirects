@@ -243,18 +243,16 @@ final class Validator {
 	}
 
 	private function ruleset_with( array $data, ?int $id, ?Rule $existing, array $pending = [] ): array {
-		$replaced = array_map(
-			static function ( array $row ): int {
-				return (int) $row['id'];
-			},
-			$pending
-		);
+		$replaced = [];
+		foreach ( $pending as $row ) {
+			$replaced[ (int) $row['id'] ] = true;
+		}
 
 		$rows = array_values(
 			array_filter(
 				$this->repository->enabled_rows(),
 				static function ( array $row ) use ( $id, $replaced ): bool {
-					return (int) $row['id'] !== (int) $id && ! in_array( (int) $row['id'], $replaced, true );
+					return (int) $row['id'] !== (int) $id && ! isset( $replaced[ (int) $row['id'] ] );
 				}
 			)
 		);

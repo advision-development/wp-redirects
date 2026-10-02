@@ -212,6 +212,60 @@ final class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( 1, $preview['counts']['warnings'] );
 	}
 
+	public function test_forward_chain_follows_the_imported_target_of_an_overwritten_rule(): void {
+		$existing  = $this->repo->insert( [ 'type' => 'exact', 'source' => '/cw-x', 'target' => '/elsewhere', 'status_code' => 301 ] );
+		$redirects = [
+			$this->entry( 1, '/cw-y/', '/cw-x/' ),
+			$this->entry( 2, '/cw-x/', '/cw-z/' ),
+		];
+
+		$entries = $this->importer->preview( $redirects, $this->export['groups'] )['entries'];
+		$this->assertSame( 'overwrite', $this->by_source_id( $entries, 2 )['status'] );
+		$this->assertSame( $existing->id, $this->by_source_id( $entries, 2 )['existing_id'] );
+
+		$warning = $this->by_source_id( $entries, 1 )['warnings'][0];
+		$this->assertSame( 'chain', $warning['code'] );
+		$this->assertSame( [ '/cw-y/', '/cw-x/', '/cw-z/' ], $warning['hops'], 'Walks the imported target, not the stale stored one.' );
+		$this->assertSame( '/cw-z/', $warning['final'] );
+	}
+
+	public function test_forward_chain_extends_through_several_later_entries(): void {
+		$redirects = [
+			$this->entry( 1, '/cw-b/', '/cw-c/' ),
+			$this->entry( 2, '/cw-a/', '/cw-b/' ),
+			$this->entry( 3, '/cw-c/', '/cw-d/' ),
+		];
+
+		$preview = $this->importer->preview( $redirects, $this->export['groups'] );
+		$warning = $this->by_source_id( $preview['entries'], 2 )['warnings'][0];
+		$this->assertSame( [ '/cw-a/', '/cw-b/', '/cw-c/', '/cw-d/' ], $warning['hops'] );
+		$this->assertSame( '/cw-d/', $warning['final'] );
+		$this->assertSame( [ '/cw-b/', '/cw-c/', '/cw-d/' ], $this->by_source_id( $preview['entries'], 1 )['warnings'][0]['hops'] );
+		$this->assertSame( [], $this->by_source_id( $preview['entries'], 3 )['warnings'] );
+		$this->assertSame( 2, $preview['counts']['warnings'] );
+	}
+
+	public function test_preview_validates_each_entry_exactly_once(): void {
+		$calls = 0;
+		add_filter(
+			'adv_redirects_validate_rule',
+			static function ( $valid ) use ( &$calls ) {
+				++$calls;
+				return $valid;
+			}
+		);
+
+		$this->importer->preview(
+			[
+				$this->entry( 1, '/cw-a/', '/cw-b/' ),
+				$this->entry( 2, '/cw-b/', '/cw-c/' ),
+				$this->entry( 3, '/cw-c/', '/cw-d/' ),
+			],
+			$this->export['groups']
+		);
+		$this->assertSame( 3, $calls );
+	}
+
 	public function test_preview_does_not_leave_the_read_cache_open(): void {
 		$this->importer->preview( [ $this->entry( 1, '/rc-open/', '/x/' ) ], $this->export['groups'] );
 		$this->repo->insert( [ 'type' => 'exact', 'source' => '/after-preview', 'target' => '/x', 'status_code' => 301 ] );

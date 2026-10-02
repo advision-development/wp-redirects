@@ -9,9 +9,13 @@
 namespace Advision\Redirects\Import;
 
 use Advision\Redirects\Matching\PathNormalizer;
+use Advision\Redirects\Matching\RulesetCompiler;
+use Advision\Redirects\Matching\TargetResolver;
+use Advision\Redirects\Redirects\ChainResolver;
 use Advision\Redirects\Redirects\Repository;
 use Advision\Redirects\Redirects\Rule;
 use Advision\Redirects\Redirects\Validator;
+use Advision\Redirects\Settings;
 use Advision\Redirects\Site;
 
 defined( 'ABSPATH' ) || exit;
@@ -117,37 +121,77 @@ final class Importer {
 				// Only an enabled rule with a fixed target can start a chain (the Validator's own skip rule).
 				if ( $result['data']['enabled'] && null !== $result['data']['target'] && ! ( 'regex' === $result['data']['type'] && preg_match( '/\$[1-9]/', (string) $result['data']['target'] ) ) ) {
 					$candidates[] = [
-						'entry'       => count( $entries ),
-						'input'       => self::validator_input( $item['rule'] ),
-						'existing_id' => null !== $existing ? $existing->id : null,
-						'row_id'      => $row['id'],
+						'entry'  => count( $entries ),
+						'type'   => $result['data']['type'],
+						'source' => $result['data']['source'],
+						'target' => (string) $result['data']['target'],
 					];
 				}
 			}
 			$entries[] = $entry;
 		}
 
-		// Second pass: a rule can only see earlier rows in the first pass, so a chain whose next
-		// hop is defined later in the file is found here, against every accepted row.
-		foreach ( $candidates as $candidate ) {
-			$others = array_values(
-				array_filter(
-					$pending,
-					static function ( array $row ) use ( $candidate ): bool {
-						return $row['id'] !== $candidate['row_id'];
-					}
-				)
-			);
-			$result = $this->validator->validate( $candidate['input'], $candidate['existing_id'], $others );
-			if ( is_array( $result ) ) {
-				$entries[ $candidate['entry'] ]['warnings'] = $result['warnings'];
-			}
-		}
+		$this->add_forward_chain_warnings( $entries, $candidates, $pending );
 
 		return [
 			'entries' => $entries,
 			'counts'  => self::preview_counts( $entries ),
 		];
+	}
+
+	/**
+	 * Second pass of the preview: a rule only sees earlier rows in the first pass, so a chain
+	 * whose next hop is defined later in the file is found here. The walk runs against one rule
+	 * set built the way the import will leave the table (stored enabled rows, replaced by id,
+	 * plus every accepted row), compiled once. Only ever adds or replaces a chain warning.
+	 *
+	 * @param array $entries    Preview entries, updated in place.
+	 * @param array $candidates Accepted enabled rules with a fixed target: entry index, type, source, target.
+	 * @param array $pending    Accepted rows shaped like Repository::enabled_rows().
+	 */
+	private function add_forward_chain_warnings( array &$entries, array $candidates, array $pending ): void {
+		if ( empty( $candidates ) ) {
+			return;
+		}
+
+		$replaced = [];
+		foreach ( $pending as $row ) {
+			$replaced[ (int) $row['id'] ] = true;
+		}
+		$rows = [];
+		foreach ( $this->repository->enabled_rows() as $row ) {
+			if ( ! isset( $replaced[ (int) $row['id'] ] ) ) {
+				$rows[] = $row;
+			}
+		}
+		$ruleset = RulesetCompiler::compile( array_merge( $rows, $pending ) );
+
+		$chains  = new ChainResolver();
+		$forward = (bool) Settings::get( 'forward_query_string' );
+
+		foreach ( $candidates as $candidate ) {
+			$start = $candidate['target'];
+			if ( $forward && 'exact' === $candidate['type'] && false !== strpos( $candidate['source'], '?' ) ) {
+				// The runtime appends the request's query to the target, so walk from the merged URL.
+				$start = TargetResolver::merge_query( $start, explode( '?', $candidate['source'], 2 )[1] );
+			}
+			$chain = $chains->resolve(
+				$candidate['source'],
+				$start,
+				$ruleset,
+				'exact' === $candidate['type'] ? PathNormalizer::source_key( $candidate['source'] ) : null,
+				$forward
+			);
+			if ( ! $chain['loop'] && count( $chain['hops'] ) > 2 ) {
+				$entries[ $candidate['entry'] ]['warnings'] = [
+					[
+						'code'  => 'chain',
+						'hops'  => $chain['hops'],
+						'final' => $chain['final'],
+					],
+				];
+			}
+		}
 	}
 
 	/**
