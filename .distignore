@@ -27,3 +27,5 @@
 /.claude
 /eslint.config.cjs
 /jest.config.cjs
+/PRODUCT.md
+/DESIGN.md
