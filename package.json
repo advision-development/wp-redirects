@@ -9,7 +9,7 @@
 		"format": "wp-scripts format assets/src tests/js tests/e2e",
 		"test:js": "wp-scripts test-unit-js",
 		"test:e2e": "wp-scripts test-playwright",
-		"env:start": "wp-env start",
+		"env:start": "wp-env start && wp-env run tests-cli wp rewrite structure '/%postname%/'",
 		"env:stop": "wp-env stop",
 		"test:php:unit": "vendor/bin/phpunit -c phpunit.unit.xml.dist",
 		"test:php:integration": "wp-env run tests-cli --env-cwd=wp-content/plugins/wp-redirects vendor/bin/phpunit -c phpunit.integration.xml.dist"
