@@ -49,17 +49,32 @@ test.describe( 'Import from Redirection', () => {
 		await expect( page.getByText( 'New (13)' ) ).toBeVisible();
 		await expect( page.getByText( 'Skipped (7)' ) ).toBeVisible();
 		await expect( page.getByText( 'Superseded (1)' ) ).toBeVisible();
+		// The first enabled duplicate (#9) is the one Redirection served.
+		await expect(
+			panel.getByText( /Redirection used entry #9 for this source/ )
+		).toBeAttached();
+		// Preview tables carry (visually hidden) header cells.
+		await expect(
+			panel.getByRole( 'columnheader', { name: 'Source' } ).first()
+		).toBeAttached();
+		await expect(
+			panel.getByRole( 'columnheader', { name: 'Result' } ).first()
+		).toBeAttached();
 
 		await page
 			.getByRole( 'button', { name: 'Import 13 redirects' } )
 			.click();
 		await expect(
 			panel.getByText(
-				/Import complete: 13 created, 0 updated, 7 skipped\./
+				/Import complete: 13 created, 0 updated, 7 skipped, 1 superseded\./
 			)
 		).toBeVisible();
 
 		await page.getByRole( 'button', { name: 'View redirects' } ).click();
+		// The button hides with the Import pane, so focus moves to the tab it opened.
+		await expect(
+			page.locator( '#adv-redirects-tab-redirects' )
+		).toBeFocused();
 		// The source cell's accessible name also holds the imported title, and
 		// /fx-old-page/ is another rule's target, so find the rule by its row.
 		const row = page.getByRole( 'row' ).filter( {
@@ -98,6 +113,14 @@ test.describe( 'Import from Redirection', () => {
 		expect( download.suggestedFilename() ).toBe(
 			'wp-redirects-import-report.json'
 		);
+
+		// "Import another file" unmounts the focused button; focus goes to "Choose file".
+		await page
+			.getByRole( 'button', { name: 'Import another file' } )
+			.click();
+		await expect(
+			page.getByRole( 'button', { name: 'Choose file' } )
+		).toBeFocused();
 	} );
 
 	test( 'rejects a file that is not a Redirection export', async ( {

@@ -28,6 +28,40 @@ function Target( { rule } ) {
 	);
 }
 
+// What an overwrite changes besides the target and status code: the enabled
+// state and the note.
+function OverwriteChanges( { entry } ) {
+	const { current, rule } = entry;
+	const wasEnabled = Boolean( current.enabled );
+	const willBeEnabled = Boolean( rule.enabled );
+	const oldNote = current.note || '';
+	const newNote = rule.note || '';
+	if ( wasEnabled === willBeEnabled && oldNote === newNote ) {
+		return null;
+	}
+	return (
+		<>
+			{ wasEnabled !== willBeEnabled && (
+				<span className="adv-redirects-flag">
+					{ willBeEnabled
+						? __( 'Disabled → Enabled', 'wp-redirects' )
+						: __( 'Enabled → Disabled', 'wp-redirects' ) }
+				</span>
+			) }
+			{ oldNote !== newNote && (
+				<span className="adv-redirects-muted">
+					{ sprintf(
+						/* translators: 1: the existing note, 2: the imported note */
+						__( 'Note: “%1$s” → “%2$s”', 'wp-redirects' ),
+						oldNote,
+						newNote
+					) }
+				</span>
+			) }
+		</>
+	);
+}
+
 function Group( { title, entries, render, open = false } ) {
 	if ( ! entries.length ) {
 		return null;
@@ -36,6 +70,12 @@ function Group( { title, entries, render, open = false } ) {
 		<details className="adv-redirects-import__group" open={ open }>
 			<summary>{ sprintf( title, entries.length ) }</summary>
 			<table className="adv-redirects-table">
+				<thead className="screen-reader-text">
+					<tr>
+						<th scope="col">{ __( 'Source', 'wp-redirects' ) }</th>
+						<th scope="col">{ __( 'Result', 'wp-redirects' ) }</th>
+					</tr>
+				</thead>
 				<tbody>
 					{ entries.map( ( entry ) => (
 						<tr key={ `${ entry.status }-${ entry.index }` }>
@@ -97,6 +137,7 @@ export default function ImportPreview( { preview } ) {
 						{ ' → ' }
 						<StatusBadge status={ entry.rule.status_code } />{ ' ' }
 						<Target rule={ entry.rule } />
+						<OverwriteChanges entry={ entry } />
 						<Notes entry={ entry } />
 					</>
 				) }
@@ -122,12 +163,14 @@ export default function ImportPreview( { preview } ) {
 				/* translators: %d: number of entries */
 				title={ __( 'Superseded (%d)', 'wp-redirects' ) }
 				entries={ groups.superseded }
-				render={ () => (
+				render={ ( entry ) => (
 					<span className="adv-redirects-muted">
-						{ __(
-							'A later entry in the file uses the same source and wins.',
-							'wp-redirects'
-						) }
+						{ entry.error
+							? entry.error.message
+							: __(
+									'Another entry in the file uses the same source.',
+									'wp-redirects'
+								) }
 					</span>
 				) }
 			/>

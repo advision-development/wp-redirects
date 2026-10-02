@@ -38,6 +38,12 @@ export default function App() {
 		setTab( 'redirects' );
 	}, [] );
 
+	// The "View redirects" button is hidden with the Import pane, so move focus to the tab it opened.
+	const viewRedirects = useCallback( () => {
+		setTab( 'redirects' );
+		document.getElementById( 'adv-redirects-tab-redirects' )?.focus();
+	}, [] );
+
 	const tabs = [
 		{
 			name: 'redirects',
@@ -109,7 +115,7 @@ export default function App() {
 				>
 					<ImportTab
 						onImported={ redirects.reload }
-						onViewRedirects={ () => setTab( 'redirects' ) }
+						onViewRedirects={ viewRedirects }
 					/>
 				</div>
 			</div>

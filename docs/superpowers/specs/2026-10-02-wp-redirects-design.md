@@ -568,7 +568,7 @@ Both routes use the standard permission check and argument schemas, and reject u
 3. **Preview** in collapsible groups: New, Will overwrite (old → new target and status), Chain warnings, Skipped (with reason), and Superseded. Notes show on the affected rows.
 4. **Import button** states the outcome, e.g. "Import 94 redirects (3 overwrite existing)".
 5. **Progress:** a native `<progress>` element with a percentage and an `aria-live` "Imported X of Y". **Cancel** stops after the current batch.
-6. **Result:** counts of created, updated and skipped. **Download report** saves skipped and superseded entries with their reasons as JSON. **View redirects** switches to the Redirects tab, and the rule list reloads.
+6. **Result:** counts of created, updated, skipped and superseded. **Download report** saves skipped and superseded entries with their reasons as JSON. **View redirects** switches to the Redirects tab, and the rule list reloads.
 7. **If a batch fails:** stop, and show how many rules were imported. Re-running the same file is safe, since rules are overwritten again.
 
 ### 17.7 Testing

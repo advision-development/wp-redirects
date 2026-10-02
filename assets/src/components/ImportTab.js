@@ -2,13 +2,13 @@ import { Button, Notice, Spinner } from '@wordpress/components';
 import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
-import { errorMessage } from '../constants';
 import {
 	BATCH_SIZE,
 	buildReport,
 	checkRedirectionExport,
 	chunk,
 	importableEntries,
+	importErrorMessage,
 	stripExport,
 } from '../utils/redirectionImport';
 import ImportPreview from './ImportPreview';
@@ -35,6 +35,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 	const readCounter = useRef( 0 );
 	const previewHeadingRef = useRef();
 	const cancelButtonRef = useRef();
+	const chooseButtonRef = useRef();
 	const resultRef = useRef();
 	// idle | checked | previewing | previewed | importing | done | failed
 	const [ phase, setPhase ] = useState( 'idle' );
@@ -123,7 +124,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 			setPreview( await api.importPreview( payload ) );
 			setPhase( 'previewed' );
 		} catch ( error ) {
-			setRequestError( errorMessage( error ) );
+			setRequestError( importErrorMessage( error ) );
 			setPhase( 'checked' );
 		}
 	};
@@ -170,7 +171,11 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 			} );
 			setPhase( 'done' );
 		} catch ( error ) {
-			setResult( { ...totals, done, failed: errorMessage( error ) } );
+			setResult( {
+				...totals,
+				done,
+				failed: importErrorMessage( error ),
+			} );
 			setPhase( 'failed' );
 		} finally {
 			onImported();
@@ -207,26 +212,28 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 					);
 	} else if ( result && result.cancelled ) {
 		resultMessage = sprintf(
-			/* translators: 1: created, 2: updated, 3: skipped, 4: not imported */
+			/* translators: 1: created, 2: updated, 3: skipped, 4: superseded, 5: not imported */
 			__(
-				'Import cancelled: %1$d created, %2$d updated, %3$d skipped; %4$d not imported.',
+				'Import cancelled: %1$d created, %2$d updated, %3$d skipped, %4$d superseded; %5$d not imported.',
 				'wp-redirects'
 			),
 			result.created,
 			result.updated,
 			result.skipped.length + counts.skipped,
+			counts.superseded,
 			result.notRun
 		);
 	} else if ( result ) {
 		resultMessage = sprintf(
-			/* translators: 1: created, 2: updated, 3: skipped */
+			/* translators: 1: created, 2: updated, 3: skipped, 4: superseded */
 			__(
-				'Import complete: %1$d created, %2$d updated, %3$d skipped.',
+				'Import complete: %1$d created, %2$d updated, %3$d skipped, %4$d superseded.',
 				'wp-redirects'
 			),
 			result.created,
 			result.updated,
-			result.skipped.length + counts.skipped
+			result.skipped.length + counts.skipped,
+			counts.superseded
 		);
 	}
 	const announcement =
@@ -290,6 +297,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 						}
 					/>
 					<Button
+						ref={ chooseButtonRef }
 						variant="secondary"
 						disabled={ busy }
 						onClick={ () => inputRef.current.click() }
@@ -506,7 +514,14 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 						<Button variant="primary" onClick={ onViewRedirects }>
 							{ __( 'View redirects', 'wp-redirects' ) }
 						</Button>
-						<Button variant="tertiary" onClick={ reset }>
+						<Button
+							variant="tertiary"
+							onClick={ () => {
+								reset();
+								// This button is about to unmount; keep focus in the flow.
+								chooseButtonRef.current?.focus();
+							} }
+						>
 							{ __( 'Import another file', 'wp-redirects' ) }
 						</Button>
 					</div>
