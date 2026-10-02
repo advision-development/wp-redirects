@@ -61,7 +61,7 @@ final class Redirector {
 		 */
 		do_action( 'adv_redirects_before_redirect', $decision['rule'], $decision['url'], $decision['status'] );
 
-		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- External targets are a feature; URL validated by UrlSafety + host guard.
+		// phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- External targets are a feature; final URL re-validated by UrlSafety (and the TargetResolver host guard for rule targets).
 		if ( wp_redirect( $decision['url'], $decision['status'], 'WP Redirects' ) ) {
 			exit;
 		}
@@ -80,13 +80,24 @@ final class Redirector {
 		 *
 		 * @param string[] $methods Default [ 'GET', 'HEAD' ].
 		 */
-		$methods = array_map( 'strtoupper', (array) apply_filters( 'adv_redirects_allowed_methods', [ 'GET', 'HEAD' ] ) );
+		$methods = array_map( 'strtoupper', array_filter( (array) apply_filters( 'adv_redirects_allowed_methods', [ 'GET', 'HEAD' ] ), 'is_string' ) );
 		if ( ! in_array( strtoupper( $method ), $methods, true ) ) {
 			return null;
 		}
 
 		$request = Site::normalizer()->from_request_uri( $uri );
 		if ( null === $request ) {
+			return null;
+		}
+
+		// Plain-permalink REST requests (REST_REQUEST is not defined yet at init priority 1).
+		parse_str( $request['query'], $query_args );
+		if ( isset( $query_args['rest_route'] ) && '' !== $query_args['rest_route'] ) {
+			return null;
+		}
+
+		// Check the original path too, so a filter cannot map a reserved path to a non-reserved one.
+		if ( Site::is_reserved_path( $request['path'] ) ) {
 			return null;
 		}
 
@@ -105,7 +116,10 @@ final class Redirector {
 		 *
 		 * @param string $path Decoded path relative to the site home, starting with "/".
 		 */
-		$path = (string) apply_filters( 'adv_redirects_request_path', $request['path'] );
+		$path = apply_filters( 'adv_redirects_request_path', $request['path'] );
+		if ( ! is_string( $path ) ) {
+			return null;
+		}
 		if ( $path !== $request['path'] ) {
 			if ( '' === $path || '/' !== $path[0] ) {
 				return null;

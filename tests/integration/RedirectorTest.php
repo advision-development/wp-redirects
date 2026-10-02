@@ -11,14 +11,26 @@ final class RedirectorTest extends WP_UnitTestCase {
 	private Repository $repo;
 	private Redirector $redirector;
 
+	/** @var array<string,array{0:bool,1:mixed}> */
+	private array $server_snapshot = [];
+
 	public function set_up(): void {
 		parent::set_up();
+		foreach ( [ 'REQUEST_URI', 'REQUEST_METHOD' ] as $key ) {
+			$this->server_snapshot[ $key ] = [ array_key_exists( $key, $_SERVER ), $_SERVER[ $key ] ?? null ];
+		}
 		$this->repo       = new Repository();
 		$this->redirector = new Redirector( new RuleCache( $this->repo ), new HitTracker( $this->repo ) );
 	}
 
 	public function tear_down(): void {
-		unset( $_SERVER['REQUEST_URI'], $_SERVER['REQUEST_METHOD'] );
+		foreach ( $this->server_snapshot as $key => $state ) {
+			if ( $state[0] ) {
+				$_SERVER[ $key ] = $state[1];
+			} else {
+				unset( $_SERVER[ $key ] );
+			}
+		}
 		parent::tear_down();
 	}
 
@@ -83,6 +95,31 @@ final class RedirectorTest extends WP_UnitTestCase {
 		$this->assertNull( $this->redirector->decide( '/wp-login.php', 'GET' ) );
 		$this->assertNull( $this->redirector->decide( '/wp-admin/', 'GET' ) );
 		$this->assertNull( $this->redirector->decide( '/wp-json/wp/v2/posts', 'GET' ) );
+	}
+
+	public function test_rest_route_requests_never_redirect(): void {
+		$this->rule( 'exact', '/', '/new' );
+		$this->rule( 'regex', '^/(.*)$', '/new/$1' );
+		$this->assertNull( $this->redirector->decide( '/?rest_route=/wp/v2/posts', 'GET' ) );
+		$this->assertNull( $this->redirector->decide( '/index.php?rest_route=/adv-redirects/v1/redirects', 'GET' ) );
+		$this->assertNotNull( $this->redirector->decide( '/', 'GET' ) );
+	}
+
+	public function test_request_path_filter_cannot_escape_reserved_paths(): void {
+		$this->rule( 'exact', '/old', '/new' );
+		add_filter(
+			'adv_redirects_request_path',
+			static function () {
+				return '/old';
+			}
+		);
+		$this->assertNull( $this->redirector->decide( '/wp-login.php', 'GET' ) );
+	}
+
+	public function test_request_path_filter_non_string_cancels(): void {
+		$this->rule( 'exact', '/old', '/new' );
+		add_filter( 'adv_redirects_request_path', '__return_null' );
+		$this->assertNull( $this->redirector->decide( '/old', 'GET' ) );
 	}
 
 	public function test_should_handle_request_filter(): void {
