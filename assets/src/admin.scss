@@ -512,3 +512,89 @@
 	opacity: 0.6;
 	transition: opacity 0.15s;
 }
+
+.adv-redirects-import {
+	display: grid;
+	gap: 16px;
+
+	&__drop {
+		align-items: center;
+		border: 2px dashed var(--adv-border);
+		border-radius: var(--adv-radius);
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		padding: 20px;
+
+		&.is-dragging {
+			border-color: var(--adv-accent);
+			background: color-mix(in srgb, var(--adv-accent) 6%, transparent);
+		}
+	}
+
+	// Visually hidden but still focusable and reachable by tests.
+	&__input {
+		border: 0;
+		clip: rect(0 0 0 0);
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		padding: 0;
+		position: absolute;
+		width: 1px;
+	}
+
+	&__summary {
+		display: grid;
+		gap: 4px 16px;
+		grid-template-columns: max-content 1fr;
+		margin: 0;
+
+		dt {
+			color: var(--adv-muted);
+		}
+
+		dd {
+			margin: 0;
+		}
+	}
+
+	&__group {
+		border-top: 1px solid var(--adv-border);
+		padding: 8px 0;
+
+		summary {
+			cursor: pointer;
+			font-weight: 600;
+			padding: 4px 0;
+		}
+	}
+
+	&__preview {
+		margin-bottom: 16px;
+	}
+
+	&__notes {
+		color: var(--adv-muted);
+		font-size: 12px;
+		margin: 4px 0 0;
+	}
+
+	&__progress {
+		display: grid;
+		gap: 8px;
+		margin-top: 12px;
+
+		progress {
+			height: 12px;
+			width: 100%;
+		}
+	}
+
+	&__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 12px;
+	}
+}

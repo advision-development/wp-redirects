@@ -5,6 +5,7 @@ import { api } from '../api';
 import { errorMessage } from '../constants';
 import { useNotices } from '../state/useNotices';
 import { useRedirects } from '../state/useRedirects';
+import ImportTab from './ImportTab';
 import NotFoundTab from './NotFoundTab';
 import RedirectsTab from './RedirectsTab';
 import SettingsTab from './SettingsTab';
@@ -45,6 +46,7 @@ export default function App() {
 		},
 		{ name: '404s', title: __( '404 Log', 'wp-redirects' ) },
 		{ name: 'settings', title: __( 'Settings', 'wp-redirects' ) },
+		{ name: 'import', title: __( 'Import', 'wp-redirects' ) },
 	];
 
 	return (
@@ -99,6 +101,12 @@ export default function App() {
 					<div className="adv-redirects-loading">
 						<Spinner />
 					</div>
+				) }
+				{ tab === 'import' && (
+					<ImportTab
+						onImported={ redirects.reload }
+						onViewRedirects={ () => setTab( 'redirects' ) }
+					/>
 				) }
 			</div>
 			<SnackbarList
