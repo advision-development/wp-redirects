@@ -1,14 +1,17 @@
-import { SnackbarList, Spinner } from '@wordpress/components';
-import { useState } from '@wordpress/element';
-import { __, _n, sprintf } from '@wordpress/i18n';
+import { SnackbarList } from '@wordpress/components';
+import { useCallback, useState } from '@wordpress/element';
+import { __ } from '@wordpress/i18n';
 import { useNotices } from '../state/useNotices';
 import { useRedirects } from '../state/useRedirects';
+import RedirectsTab from './RedirectsTab';
 import Tabs from './Tabs';
 
 export default function App() {
 	const { notices, notify, dismiss } = useNotices();
 	const redirects = useRedirects( notify );
 	const [ tab, setTab ] = useState( 'redirects' );
+	const [ prefill, setPrefill ] = useState( null );
+	const clearPrefill = useCallback( () => setPrefill( null ), [] );
 
 	const tabs = [
 		{
@@ -32,21 +35,13 @@ export default function App() {
 				aria-labelledby={ `adv-redirects-tab-${ tab }` }
 				className="adv-redirects__panel"
 			>
-				{ redirects.loading ? (
-					<Spinner />
-				) : (
-					<p>
-						{ sprintf(
-							/* translators: %d: number of redirects */
-							_n(
-								'%d redirect',
-								'%d redirects',
-								redirects.items.length,
-								'wp-redirects'
-							),
-							redirects.items.length
-						) }
-					</p>
+				{ tab === 'redirects' && (
+					<RedirectsTab
+						redirects={ redirects }
+						notify={ notify }
+						prefill={ prefill }
+						onPrefillUsed={ clearPrefill }
+					/>
 				) }
 			</div>
 			<SnackbarList
