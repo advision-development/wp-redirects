@@ -81,3 +81,6 @@ export function moveItem( ids, from, to ) {
 	next.splice( to, 0, moved );
 	return next;
 }
+
+export const visibleSelection = ( selected, visibleIds ) =>
+	selected.filter( ( id ) => visibleIds.includes( id ) );

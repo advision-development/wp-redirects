@@ -14,6 +14,7 @@ import {
 	isFiltered,
 	moveItem,
 	sortRules,
+	visibleSelection,
 } from '../utils/rules';
 import ConfirmModal from './ConfirmModal';
 import RuleEditRow from './RuleEditRow';
@@ -67,12 +68,6 @@ export default function RulesTable( {
 	const [ confirmDelete, setConfirmDelete ] = useState( false );
 	const [ dragIndex, setDragIndex ] = useState( null );
 
-	useEffect( () => {
-		setSelected( ( current ) =>
-			current.filter( ( id ) => rules.some( ( rule ) => rule.id === id ) )
-		);
-	}, [ rules ] );
-
 	const filtered = isFiltered( filters );
 	const reorderable = isRegex && ! filtered;
 	const visible = useMemo( () => {
@@ -80,9 +75,22 @@ export default function RulesTable( {
 		return isRegex ? list : sortRules( list, sort );
 	}, [ rules, filters, sort, isRegex ] );
 	const visibleIds = visible.map( ( rule ) => rule.id );
+	// Only rows that are both ticked and currently visible take part in bulk
+	// actions, so filtering never leaves hidden rows selected.
+	const activeSelection = visibleSelection( selected, visibleIds );
 	const allSelected =
-		visibleIds.length > 0 &&
-		visibleIds.every( ( id ) => selected.includes( id ) );
+		visibleIds.length > 0 && activeSelection.length === visibleIds.length;
+
+	useEffect( () => {
+		setSelected( ( current ) => {
+			const next = visibleSelection(
+				current,
+				visible.map( ( rule ) => rule.id )
+			);
+			return next.length === current.length ? current : next;
+		} );
+	}, [ visible ] );
+
 	const colSpan = isRegex ? 9 : 8;
 	const setFilter = ( key ) => ( value ) =>
 		setFilters( ( current ) => ( { ...current, [ key ]: value } ) );
@@ -98,7 +106,7 @@ export default function RulesTable( {
 
 	const runBulk = async ( action ) => {
 		try {
-			const result = await onBulk( action, selected );
+			const result = await onBulk( action, activeSelection );
 			setSelected( [] );
 			if ( result.skipped.length ) {
 				notify( {
@@ -161,7 +169,15 @@ export default function RulesTable( {
 		reorderable
 			? {
 					draggable: true,
-					onDragStart: () => setDragIndex( index ),
+					onDragStart: ( event ) => {
+						// Firefox only starts a drag when data is set.
+						event.dataTransfer.setData(
+							'text/plain',
+							String( index )
+						);
+						event.dataTransfer.effectAllowed = 'move';
+						setDragIndex( index );
+					},
 					onDragOver: ( event ) => event.preventDefault(),
 					onDrop: ( event ) => {
 						event.preventDefault();
@@ -259,7 +275,7 @@ export default function RulesTable( {
 					] }
 					onChange={ setFilter( 'origin' ) }
 				/>
-				{ selected.length > 0 && (
+				{ activeSelection.length > 0 && (
 					<div
 						className="adv-redirects-bulk"
 						role="group"
@@ -271,10 +287,10 @@ export default function RulesTable( {
 									_n(
 										'%d selected',
 										'%d selected',
-										selected.length,
+										activeSelection.length,
 										'wp-redirects'
 									),
-									selected.length
+									activeSelection.length
 								)
 							}
 						</span>
@@ -443,10 +459,10 @@ export default function RulesTable( {
 						_n(
 							'Delete %d redirect? This cannot be undone.',
 							'Delete %d redirects? This cannot be undone.',
-							selected.length,
+							activeSelection.length,
 							'wp-redirects'
 						),
-						selected.length
+						activeSelection.length
 					) }
 					confirmLabel={ __( 'Delete', 'wp-redirects' ) }
 					onCancel={ () => setConfirmDelete( false ) }

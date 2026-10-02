@@ -27,15 +27,18 @@ export default function RedirectsTab( {
 		);
 	}
 
-	if ( redirects.error ) {
-		return (
-			<Notice status="error" isDismissible={ false }>
-				{ redirects.error }{ ' ' }
-				<Button variant="link" onClick={ redirects.reload }>
-					{ __( 'Try again', 'wp-redirects' ) }
-				</Button>
-			</Notice>
-		);
+	const errorNotice = redirects.error ? (
+		<Notice status="error" isDismissible={ false }>
+			{ redirects.error }{ ' ' }
+			<Button variant="link" onClick={ redirects.reload }>
+				{ __( 'Try again', 'wp-redirects' ) }
+			</Button>
+		</Notice>
+	) : null;
+
+	// With nothing loaded yet there is no content to keep, so show only the error.
+	if ( errorNotice && redirects.items.length === 0 ) {
+		return errorNotice;
 	}
 
 	const tableProps = {
@@ -49,6 +52,7 @@ export default function RedirectsTab( {
 
 	return (
 		<>
+			{ errorNotice }
 			<section className="adv-redirects-card">
 				<TestUrlBar
 					value={ testPath }

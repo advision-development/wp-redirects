@@ -5,6 +5,7 @@ import {
 	moveItem,
 	sortRules,
 	splitByType,
+	visibleSelection,
 } from '../../assets/src/utils/rules';
 
 const rules = [
@@ -150,5 +151,17 @@ describe( 'moveItem', () => {
 		expect( moveItem( [ 1, 2, 3 ], 0, 2 ) ).toEqual( [ 2, 3, 1 ] );
 		expect( moveItem( [ 1, 2, 3 ], 2, 1 ) ).toEqual( [ 1, 3, 2 ] );
 		expect( moveItem( [ 1, 2, 3 ], 0, -1 ) ).toEqual( [ 1, 2, 3 ] );
+	} );
+} );
+
+describe( 'visibleSelection', () => {
+	it( 'keeps only selected ids that are visible, preserving order', () => {
+		expect( visibleSelection( [ 3, 1, 2 ], [ 1, 2, 4 ] ) ).toEqual( [
+			1, 2,
+		] );
+	} );
+	it( 'returns an empty list when nothing selected is visible', () => {
+		expect( visibleSelection( [ 5 ], [ 1, 2 ] ) ).toEqual( [] );
+		expect( visibleSelection( [], [ 1, 2 ] ) ).toEqual( [] );
 	} );
 } );
