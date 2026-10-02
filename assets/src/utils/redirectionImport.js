@@ -1,4 +1,5 @@
 import { __, sprintf } from '@wordpress/i18n';
+import { errorMessage } from '../constants';
 
 export const MAX_PREVIEW = 2000;
 export const BATCH_SIZE = 50;
@@ -7,16 +8,22 @@ const MAX_ERRORS = 5;
 const KEEP_FIELDS = [
 	'id',
 	'url',
-	'match_data',
 	'action_code',
 	'action_type',
-	'action_data',
 	'match_type',
 	'title',
 	'regex',
 	'group_id',
 	'position',
 	'enabled',
+];
+
+// The only match_data keys the server reads.
+const SOURCE_FLAGS = [
+	'flag_case',
+	'flag_query',
+	'flag_regex',
+	'flag_trailing',
 ];
 
 const isObject = ( value ) =>
@@ -174,15 +181,51 @@ export function checkRedirectionExport( data ) {
 	};
 }
 
+/**
+ * Reduces match_data and action_data to what the server reads. Conditional
+ * rules (login, IP, agent, cookie, header...) keep their IPs, user-agent
+ * patterns and cookie names in action_data and match_data, so none of it is
+ * sent: only a redirect's target url and the source flags.
+ *
+ * @param {Object} entry One raw Redirection entry.
+ * @return {Object} The entry's `match_data` and `action_data`, reduced.
+ */
+function reducedData( entry ) {
+	const reduced = {};
+	if ( 'match_data' in entry ) {
+		const source = isObject( entry.match_data )
+			? entry.match_data.source
+			: null;
+		reduced.match_data = {
+			source: Object.fromEntries(
+				SOURCE_FLAGS.filter(
+					( flag ) => isObject( source ) && flag in source
+				).map( ( flag ) => [ flag, source[ flag ] ] )
+			),
+		};
+	}
+	if ( 'action_data' in entry ) {
+		reduced.action_data =
+			isObject( entry.action_data ) &&
+			typeof entry.action_data.url === 'string'
+				? { url: entry.action_data.url }
+				: null;
+	}
+	return reduced;
+}
+
 export function stripExport( data ) {
 	const redirects = data.redirects
 		.map( ( entry, order ) => ( {
 			order,
-			entry: Object.fromEntries(
-				KEEP_FIELDS.filter( ( field ) => field in entry ).map(
-					( field ) => [ field, entry[ field ] ]
-				)
-			),
+			entry: {
+				...Object.fromEntries(
+					KEEP_FIELDS.filter( ( field ) => field in entry ).map(
+						( field ) => [ field, entry[ field ] ]
+					)
+				),
+				...reducedData( entry ),
+			},
 		} ) )
 		.sort(
 			( a, b ) =>
@@ -198,10 +241,47 @@ export function stripExport( data ) {
 			( group ) => ( {
 				id: Number( group.id ),
 				name: group.name,
+				// Redirection skips every rule in a disabled group.
+				...( typeof group.status === 'string' && {
+					status: group.status,
+				} ),
+				...( typeof group.enabled === 'boolean' && {
+					enabled: group.enabled,
+				} ),
 			} )
 		),
 		redirects,
 	};
+}
+
+/**
+ * True when the server (or a proxy in front of it) refused the request body as
+ * too large. apiFetch turns a request that got no response at all (the
+ * TypeError a connection reset raises) into a `fetch_error`.
+ *
+ * @param {Object|null} error What apiFetch rejected with.
+ * @return {boolean} Whether the upload was too large.
+ */
+export function isTooLarge( error ) {
+	if ( ! error ) {
+		return false;
+	}
+	return (
+		error.status === 413 ||
+		( error.data && error.data.status === 413 ) ||
+		error.code === 'rest_request_too_large' ||
+		error.code === 'fetch_error' ||
+		error instanceof TypeError
+	);
+}
+
+export function importErrorMessage( error ) {
+	return isTooLarge( error )
+		? __(
+				'The server rejected the upload as too large. Split the export into smaller files and import them one at a time.',
+				'wp-redirects'
+			)
+		: errorMessage( error );
 }
 
 export function chunk( items, size ) {
@@ -257,6 +337,10 @@ export const NOTE_LABELS = {
 		'Regex rules match the path only, so the query part of this pattern will not match.',
 		'wp-redirects'
 	),
+	group_disabled: __(
+		'Its Redirection group is disabled, so it is imported disabled.',
+		'wp-redirects'
+	),
 };
 
 export function buildReport( { summary, preview, importSkipped = [] } ) {
@@ -290,6 +374,8 @@ export function buildReport( { summary, preview, importSkipped = [] } ) {
 			.map( ( entry ) => ( {
 				index: entry.index,
 				source: entry.source,
+				superseded_by: entry.superseded_by,
+				message: entry.error ? entry.error.message : undefined,
 			} ) ),
 	};
 }

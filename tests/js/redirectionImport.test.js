@@ -5,6 +5,9 @@ import {
 	chunk,
 	groupPreview,
 	importableEntries,
+	importErrorMessage,
+	isTooLarge,
+	NOTE_LABELS,
 	stripExport,
 } from '../../assets/src/utils/redirectionImport';
 
@@ -89,8 +92,8 @@ describe( 'stripExport', () => {
 		] );
 		expect( payload.source ).toBe( 'redirection' );
 		expect( payload.groups ).toEqual( [
-			{ id: 1, name: 'Redirections' },
-			{ id: 2, name: 'Modified Posts' },
+			{ id: 1, name: 'Redirections', status: 'enabled' },
+			{ id: 2, name: 'Modified Posts', status: 'enabled' },
 		] );
 		const json = JSON.stringify( payload );
 		expect( json ).not.toMatch(
@@ -112,6 +115,114 @@ describe( 'stripExport', () => {
 		] );
 	} );
 
+	it( 'keeps the status of a disabled group and drops other group fields', () => {
+		const data = clone();
+		data.groups = [
+			{ id: 1, name: 'A', status: 'disabled', module_id: 1 },
+			{ id: 2, name: 'B', enabled: false },
+			{ id: 3, name: 'C', status: 5, enabled: 'no' },
+		];
+		expect( stripExport( data ).groups ).toEqual( [
+			{ id: 1, name: 'A', status: 'disabled' },
+			{ id: 2, name: 'B', enabled: false },
+			{ id: 3, name: 'C' },
+		] );
+	} );
+
+	it( 'never sends condition data from non-redirect entries', () => {
+		const data = clone();
+		const secret = {
+			ip: [ '203.0.113.7', '198.51.100.0/24' ],
+			agent: 'SecretAgent/9',
+			cookie: 'session=abc123',
+			header: 'x-private: yes',
+			url: '/fx-keep-me/',
+			url_from: '/fx-from/',
+		};
+		const login = {
+			...data.redirects[ 12 ],
+			action_data: {
+				logged_in: '/fx-in/',
+				logged_out: '/fx-out/',
+				ip: secret.ip,
+			},
+		};
+		const agent = {
+			...data.redirects[ 12 ],
+			match_type: 'agent',
+			action_data: { agent: secret.agent, url_from: secret.url_from },
+			match_data: {
+				source: { flag_case: true, flag_regex: false },
+				extra: secret.cookie,
+			},
+		};
+		const ip = {
+			...data.redirects[ 12 ],
+			match_type: 'ip',
+			action_data: { ip: secret.ip, header: secret.header },
+		};
+		data.redirects = [ login, agent, ip ];
+
+		const payload = stripExport( data );
+		payload.redirects.forEach( ( entry ) => {
+			expect( entry.action_data ).toBeNull();
+		} );
+		const json = JSON.stringify( payload );
+		expect( json ).not.toMatch(
+			/203\.0\.113|198\.51\.100|SecretAgent|session=abc123|x-private|fx-from|fx-in|fx-out/
+		);
+	} );
+
+	it( 'sends only the target url of a redirect and only the source flags of match_data', () => {
+		const data = clone();
+		data.redirects[ 0 ].action_data = {
+			url: '/fx-new-page/',
+			ip: [ '203.0.113.9' ],
+		};
+		data.redirects[ 0 ].match_data = {
+			source: {
+				flag_case: false,
+				flag_query: 'ignore',
+				flag_regex: false,
+				flag_trailing: true,
+				other: 'x',
+			},
+			options: { log_exclude: true },
+		};
+		const first = stripExport( data ).redirects.find(
+			( entry ) => entry.id === 1
+		);
+		expect( first.action_data ).toEqual( { url: '/fx-new-page/' } );
+		expect( first.match_data ).toEqual( {
+			source: {
+				flag_case: false,
+				flag_query: 'ignore',
+				flag_regex: false,
+				flag_trailing: true,
+			},
+		} );
+	} );
+
+	it( 'copies only the match flags that are present', () => {
+		const data = clone();
+		data.redirects[ 0 ].match_data = { source: { flag_case: false } };
+		data.redirects[ 1 ].match_data = null;
+		const redirects = stripExport( data ).redirects;
+		expect(
+			redirects.find( ( entry ) => entry.id === 1 ).match_data
+		).toEqual( { source: { flag_case: false } } );
+		expect(
+			redirects.find( ( entry ) => entry.id === 2 ).match_data
+		).toEqual( { source: {} } );
+	} );
+
+	it( 'sends null action_data for error actions', () => {
+		const gone = stripExport( clone() ).redirects.find(
+			( entry ) => entry.id === 11
+		);
+		expect( gone.action_data ).toBeNull();
+	} );
+
 	it( 'keeps entries ordered by position, then original order', () => {
 		const data = clone();
 		data.redirects[ 0 ].position = 99;
@@ -119,6 +230,28 @@ describe( 'stripExport', () => {
 		const ids = stripExport( data ).redirects.map( ( entry ) => entry.id );
 		expect( ids.slice( 0, 4 ) ).toEqual( [ 3, 2, 4, 5 ] );
 		expect( ids[ ids.length - 1 ] ).toBe( 1 );
+	} );
+} );
+
+describe( 'upload size errors', () => {
+	const TOO_LARGE =
+		'The server rejected the upload as too large. Split the export into smaller files and import them one at a time.';
+
+	it( 'recognises a refused body', () => {
+		expect( isTooLarge( { status: 413 } ) ).toBe( true );
+		expect( isTooLarge( { data: { status: 413 } } ) ).toBe( true );
+		expect( isTooLarge( { code: 'rest_request_too_large' } ) ).toBe( true );
+		expect( isTooLarge( { code: 'fetch_error' } ) ).toBe( true );
+		expect( isTooLarge( new TypeError( 'Failed to fetch' ) ) ).toBe( true );
+		expect( isTooLarge( { code: 'rest_forbidden' } ) ).toBe( false );
+		expect( isTooLarge( null ) ).toBe( false );
+	} );
+
+	it( 'maps them to the split-the-file message, others to their own', () => {
+		expect( importErrorMessage( { status: 413 } ) ).toBe( TOO_LARGE );
+		expect(
+			importErrorMessage( { code: 'x', message: 'Not allowed.' } )
+		).toBe( 'Not allowed.' );
 	} );
 } );
 
@@ -134,7 +267,14 @@ describe( 'batching helpers', () => {
 				error: { code: 'x', message: 'Nope' },
 				source: '/c',
 			},
-			{ index: 3, status: 'superseded', warnings: [], source: '/d' },
+			{
+				index: 3,
+				status: 'superseded',
+				warnings: [],
+				source: '/d',
+				superseded_by: 12,
+				error: { code: 'superseded', message: 'Used entry #12.' },
+			},
 		],
 	};
 	const redirects = [ { id: 10 }, { id: 11 }, { id: 12 }, { id: 13 } ];
@@ -164,6 +304,12 @@ describe( 'batching helpers', () => {
 		] );
 		expect( groups.skipped ).toHaveLength( 1 );
 		expect( groups.superseded ).toHaveLength( 1 );
+	} );
+
+	it( 'labels the disabled-group note', () => {
+		expect( NOTE_LABELS.group_disabled ).toBe(
+			'Its Redirection group is disabled, so it is imported disabled.'
+		);
 	} );
 
 	it( 'builds a report of skipped and superseded entries', () => {
@@ -199,6 +345,13 @@ describe( 'batching helpers', () => {
 				stage: 'import',
 			},
 		] );
-		expect( report.superseded ).toEqual( [ { index: 3, source: '/d' } ] );
+		expect( report.superseded ).toEqual( [
+			{
+				index: 3,
+				source: '/d',
+				superseded_by: 12,
+				message: 'Used entry #12.',
+			},
+		] );
 	} );
 } );
