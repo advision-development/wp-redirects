@@ -5,9 +5,9 @@
 	"scripts": {
 		"build": "wp-scripts build assets/src/index.js --output-path=build",
 		"start": "wp-scripts start assets/src/index.js --output-path=build",
-		"lint:js": "wp-scripts lint-js assets/src tests/js tests/e2e",
-		"format": "wp-scripts format assets/src tests/js tests/e2e",
-		"test:js": "wp-scripts test-unit-js",
+		"lint:js": "wp-scripts lint-js --no-error-on-unmatched-pattern assets/src tests/js tests/e2e",
+		"format": "wp-scripts format assets/src tests/js",
+		"test:js": "jest",
 		"test:e2e": "wp-scripts test-playwright",
 		"env:start": "wp-env start && wp-env run tests-cli wp rewrite structure '/%postname%/'",
 		"env:stop": "wp-env stop",
@@ -15,9 +15,23 @@
 		"test:php:integration": "wp-env run tests-cli --env-cwd=wp-content/plugins/wp-redirects vendor/bin/phpunit -c phpunit.integration.xml.dist"
 	},
 	"devDependencies": {
+		"@babel/core": "^7.29.7",
 		"@playwright/test": "^1.63.0",
+		"@wordpress/api-fetch": "^7.56.0",
+		"@wordpress/babel-preset-default": "^8.55.0",
+		"@wordpress/components": "^41.0.0",
 		"@wordpress/e2e-test-utils-playwright": "^2.1.0",
+		"@wordpress/element": "^8.8.0",
 		"@wordpress/env": "^11.16.0",
-		"@wordpress/scripts": "^36.0.0"
+		"@wordpress/eslint-plugin": "^27.0.0",
+		"@wordpress/i18n": "^6.29.0",
+		"@wordpress/icons": "^17.0.0",
+		"@wordpress/jest-preset-default": "^14.2.0",
+		"@wordpress/scripts": "^36.0.0",
+		"@wordpress/url": "^4.56.0",
+		"babel-jest": "^30.5.0",
+		"eslint-plugin-jest": "^29.16.6",
+		"jest": "^30.5.0",
+		"jest-environment-jsdom": "^30.5.0"
 	}
 }

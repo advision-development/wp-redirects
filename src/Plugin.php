@@ -7,6 +7,7 @@
 
 namespace Advision\Redirects;
 
+use Advision\Redirects\Admin\AdminPage;
 use Advision\Redirects\Matching\Redirector;
 use Advision\Redirects\Matching\RuleCache;
 use Advision\Redirects\Redirects\ChainResolver;
@@ -74,6 +75,10 @@ final class Plugin {
 		$this->not_found_logger->register();
 		$this->slug_watcher->register();
 		$this->cron->register();
+
+		if ( is_admin() ) {
+			( new AdminPage() )->register();
+		}
 
 		UpdateChecker::boot( ADV_REDIRECTS_FILE );
 	}
