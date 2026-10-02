@@ -473,6 +473,7 @@ All hooks are documented with docblocks in code and in `docs/hooks.md`.
 7. Final review fixes: the Test URL tool and the chain walk skip what the Redirector never handles (reserved paths and a non-empty `rest_route` query). The test endpoint answers `matched: false, reason: "reserved"` for them. Exact rules reject `$1`-`$9` in the target (`adv_redirects_invalid_target`), since only regex rules substitute captures. The plugin header carries `Update URI` so WordPress core never checks wordpress.org for the `wp-redirects` slug.
 8. Import from the Redirection plugin (JSON export) is added to scope; see §17.
 9. Rule attribution: `created_by`, `created_via` (`manual`|`import`|`slug`|`api`) and `updated_by` columns (schema v2), set server-side in `Repository`; REST adds `created_by_name`/`updated_by_name`; the rules table shows "By: <user> · <date>" plus a via label, and the last edit on hover and in the edit row.
+10. Import fixes from the final review: in-file duplicates keep the entry Redirection actually served (first enabled, else first) instead of the later one (§17.4); rules in a disabled Redirection group import disabled; the client sends only the fields the server reads (no condition data such as IPs, agents, cookies or headers); an empty imported title never clears an existing rule's note on overwrite.
 
 ## 17. Import from Redirection (added 2026-10-02)
 
@@ -528,6 +529,7 @@ Admins upload a JSON export from the **Redirection** plugin (tested against v5.1
 | `flag_trailing` false | `trailing_slash_ignored` |
 | `flag_query` is `ignore` or `pass` | `query_mode` (WP Redirects matches the query only when the source contains one, and forwards per the global setting) |
 | regex pattern containing `\?` | `regex_query` (regex rules match the path only) |
+| the entry's Redirection group is disabled (`status` is `disabled` or `enabled` is false) | `group_disabled` (Redirection skips every rule in such a group, so the rule imports disabled) |
 
 The filter `adv_redirects_import_rule( array|false $rule, array $entry )` can modify a mapped rule or skip it by returning `false`.
 
@@ -538,7 +540,7 @@ The filter `adv_redirects_import_rule( array|false $rule, array $entry )` can mo
 - An existing regex rule with an identical pattern string is updated in place the same way.
 - The preview reports these as `overwrite`, with the current and imported target and status.
 
-**Duplicates within the file:** the later entry wins. Earlier duplicates are reported as `superseded`.
+**Duplicates within the file:** Redirection serves the first enabled match in position order, so the import keeps that entry. Among entries with the same conflict key (in the order received, position-sorted by the client) the winner is the first entry that maps and passes the filter and is enabled; if none is enabled, the first one that maps. Every other entry with that key is reported as `superseded`, with a reason naming the winner and a `superseded_by` field (the winner's Redirection id). The winner is chosen before validation: if it then fails validation it is `skipped` as usual, and no superseded copy is imported in its place. A regex source is compared after trimming, as the Validator stores it.
 
 **Validation:**
 - Every mapped rule passes through `Validator::validate()`, with the existing rule's id when overwriting. Failures are `skipped` with the validator's error code and message.

@@ -51,8 +51,12 @@ final class ImporterTest extends WP_UnitTestCase {
 		$entries = $this->importer->preview( $this->export['redirects'], $this->export['groups'] )['entries'];
 
 		$this->assertSame( 'chain', $this->by_source_id( $entries, 2 )['warnings'][0]['code'] );
-		$this->assertSame( 'superseded', $this->by_source_id( $entries, 9 )['status'] );
-		$this->assertSame( 'new', $this->by_source_id( $entries, 10 )['status'] );
+		$this->assertSame( 'new', $this->by_source_id( $entries, 9 )['status'], 'The first enabled duplicate is the one Redirection served.' );
+		$superseded = $this->by_source_id( $entries, 10 );
+		$this->assertSame( 'superseded', $superseded['status'] );
+		$this->assertSame( 9, $superseded['superseded_by'] );
+		$this->assertSame( 'superseded', $superseded['error']['code'] );
+		$this->assertStringContainsString( '#9', $superseded['error']['message'] );
 
 		$this->assertSame( 'adv_redirects_loop', $this->by_source_id( $entries, 8 )['error']['code'] );
 		$this->assertSame( 'adv_redirects_loop', $this->by_source_id( $entries, 19 )['error']['code'], 'Loop formed only by imported rules.' );
@@ -81,7 +85,7 @@ final class ImporterTest extends WP_UnitTestCase {
 		$auto = $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/fx-auto-slug/' ) );
 		$this->assertSame( 'auto', $auto->origin );
 		$this->assertFalse( $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/fx-disabled/' ) )->enabled );
-		$this->assertSame( '/fx-dupe-second/', $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/fx-dupe' ) )->target );
+		$this->assertSame( '/fx-dupe-first/', $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/fx-dupe' ) )->target );
 	}
 
 	public function test_import_of_the_full_list_skips_like_preview(): void {
@@ -192,7 +196,7 @@ final class ImporterTest extends WP_UnitTestCase {
 		];
 	}
 
-	public function test_later_own_host_absolute_source_supersedes_an_earlier_path_entry(): void {
+	public function test_own_host_absolute_duplicate_of_an_earlier_path_entry_is_superseded(): void {
 		$redirects = [
 			$this->entry( 1, '/probe-a/', '/target-one/' ),
 			$this->entry( 2, 'http://example.org/probe-a', '/target-two/' ),
@@ -201,13 +205,162 @@ final class ImporterTest extends WP_UnitTestCase {
 		$preview = $this->importer->preview( $redirects, $this->export['groups'] );
 		$this->assertSame( 1, $preview['counts']['new'] );
 		$this->assertSame( 1, $preview['counts']['superseded'] );
-		$this->assertSame( 'superseded', $this->by_source_id( $preview['entries'], 1 )['status'] );
-		$this->assertSame( 'new', $this->by_source_id( $preview['entries'], 2 )['status'] );
+		$this->assertSame( 'new', $this->by_source_id( $preview['entries'], 1 )['status'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $preview['entries'], 2 )['status'] );
+		$this->assertSame( 1, $this->by_source_id( $preview['entries'], 2 )['superseded_by'] );
 
 		$result = $this->importer->import( $redirects, $this->export['groups'] );
 		$this->assertSame( [ 'total' => 2, 'created' => 1, 'updated' => 0, 'skipped' => 1 ], $result['counts'] );
-		$this->assertSame( 'superseded', $this->by_source_id( $result['entries'], 1 )['error']['code'] );
-		$this->assertSame( '/target-two/', $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/probe-a' ) )->target );
+		$this->assertSame( 'superseded', $this->by_source_id( $result['entries'], 2 )['error']['code'] );
+		$this->assertSame( 1, $this->by_source_id( $result['entries'], 2 )['superseded_by'] );
+		$this->assertSame( '/target-one/', $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/probe-a' ) )->target );
+	}
+
+	public function test_an_enabled_entry_beats_a_later_disabled_duplicate(): void {
+		$redirects = [
+			$this->entry( 1, '/dup-a/', '/live/' ),
+			$this->entry( 2, '/dup-a', '/disabled/', false ),
+		];
+		$entries   = $this->importer->preview( $redirects, $this->export['groups'] )['entries'];
+		$this->assertSame( 'new', $this->by_source_id( $entries, 1 )['status'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $entries, 2 )['status'] );
+		$this->assertSame( 1, $this->by_source_id( $entries, 2 )['superseded_by'] );
+	}
+
+	public function test_an_enabled_entry_beats_an_earlier_disabled_duplicate(): void {
+		$redirects = [
+			$this->entry( 1, '/dup-b/', '/disabled/', false ),
+			$this->entry( 2, '/dup-b', '/live/' ),
+		];
+		$preview   = $this->importer->preview( $redirects, $this->export['groups'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $preview['entries'], 1 )['status'] );
+		$this->assertSame( 2, $this->by_source_id( $preview['entries'], 1 )['superseded_by'] );
+		$this->assertSame( 'new', $this->by_source_id( $preview['entries'], 2 )['status'] );
+
+		$this->importer->import( [ $redirects[1] ], $this->export['groups'] );
+		$rule = $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/dup-b' ) );
+		$this->assertSame( '/live/', $rule->target );
+		$this->assertTrue( $rule->enabled );
+	}
+
+	public function test_with_no_enabled_duplicate_the_first_one_wins(): void {
+		$redirects = [
+			$this->entry( 1, '/dup-c/', '/first/', false ),
+			$this->entry( 2, '/dup-c', '/second/', false ),
+		];
+		$entries   = $this->importer->preview( $redirects, $this->export['groups'] )['entries'];
+		$this->assertSame( 'new', $this->by_source_id( $entries, 1 )['status'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $entries, 2 )['status'] );
+	}
+
+	public function test_a_valid_entry_beats_a_later_duplicate_with_an_invalid_target(): void {
+		$redirects = [
+			$this->entry( 1, '/dup-d/', '/good/' ),
+			$this->entry( 2, '/dup-d', 'javascript:alert(1)' ),
+		];
+		$preview   = $this->importer->preview( $redirects, $this->export['groups'] );
+		$this->assertSame( 'new', $this->by_source_id( $preview['entries'], 1 )['status'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $preview['entries'], 2 )['status'], 'Superseded, not skipped.' );
+		$this->assertSame( 0, $preview['counts']['skipped'] );
+	}
+
+	public function test_a_winner_that_fails_validation_is_skipped_and_no_copy_takes_its_place(): void {
+		$redirects = [
+			$this->entry( 1, '/dup-e/', 'javascript:alert(1)' ),
+			$this->entry( 2, '/dup-e', '/good/' ),
+		];
+		$preview   = $this->importer->preview( $redirects, $this->export['groups'] );
+		$this->assertSame( 'skipped', $this->by_source_id( $preview['entries'], 1 )['status'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $preview['entries'], 2 )['status'] );
+
+		$result = $this->importer->import( $redirects, $this->export['groups'] );
+		$this->assertSame( 0, $result['counts']['created'] );
+		$this->assertSame( [], $this->repo->all() );
+	}
+
+	public function test_a_filtered_entry_never_wins_a_duplicate(): void {
+		add_filter(
+			'adv_redirects_import_rule',
+			static function ( $rule, array $entry ) {
+				return 1 === $entry['id'] ? false : $rule;
+			},
+			10,
+			2
+		);
+		$redirects = [
+			$this->entry( 1, '/dup-f/', '/one/' ),
+			$this->entry( 2, '/dup-f', '/two/' ),
+		];
+		$entries   = $this->importer->preview( $redirects, $this->export['groups'] )['entries'];
+		$this->assertSame( 'skipped', $this->by_source_id( $entries, 1 )['status'] );
+		$this->assertSame( 'new', $this->by_source_id( $entries, 2 )['status'] );
+	}
+
+	public function test_a_rule_in_a_disabled_redirection_group_imports_disabled_with_a_note(): void {
+		$groups    = [ [ 'id' => 1, 'name' => 'Redirections', 'status' => 'disabled' ] ];
+		$redirects = [ $this->entry( 1, '/grp-off/', '/x/' ) ];
+
+		$entry = $this->importer->preview( $redirects, $groups )['entries'][0];
+		$this->assertSame( 'new', $entry['status'] );
+		$this->assertFalse( $entry['rule']['enabled'] );
+		$this->assertContains( 'group_disabled', $entry['notes'] );
+
+		$this->importer->import( $redirects, $groups );
+		$this->assertFalse( $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/grp-off' ) )->enabled );
+	}
+
+	public function test_regex_sources_that_differ_only_by_whitespace_are_duplicates(): void {
+		$regex = function ( int $id, string $source ): array {
+			$entry          = $this->entry( $id, $source, '/re-target/' );
+			$entry['regex'] = true;
+			return $entry;
+		};
+		$redirects = [ $regex( 1, '^/re$' ), $regex( 2, ' ^/re$' ) ];
+
+		$preview = $this->importer->preview( $redirects, $this->export['groups'] );
+		$this->assertSame( 1, $preview['counts']['new'] );
+		$this->assertSame( 1, $preview['counts']['superseded'] );
+		$this->assertSame( 'new', $this->by_source_id( $preview['entries'], 1 )['status'] );
+	}
+
+	public function test_a_regex_source_with_a_leading_space_overwrites_the_stored_rule(): void {
+		$existing       = $this->repo->insert( [ 'type' => 'regex', 'source' => '^/re$', 'target' => '/old/', 'status_code' => 301 ] );
+		$entry          = $this->entry( 1, ' ^/re$', '/new/' );
+		$entry['regex'] = true;
+
+		$preview = $this->importer->preview( [ $entry ], $this->export['groups'] )['entries'][0];
+		$this->assertSame( 'overwrite', $preview['status'] );
+		$this->assertSame( $existing->id, $preview['existing_id'] );
+
+		$result = $this->importer->import( [ $entry ], $this->export['groups'] );
+		$this->assertSame( [ 'total' => 1, 'created' => 0, 'updated' => 1, 'skipped' => 0 ], $result['counts'] );
+		$this->assertCount( 1, $this->repo->all() );
+		$this->assertSame( '/new/', $this->repo->find( $existing->id )->target );
+	}
+
+	public function test_an_empty_title_keeps_the_existing_note_on_overwrite(): void {
+		$existing = $this->repo->insert( [ 'type' => 'exact', 'source' => '/note-keep', 'target' => '/old/', 'status_code' => 301, 'note' => 'Keep me' ] );
+		$entry    = $this->entry( 1, '/note-keep/', '/new/' );
+
+		$preview = $this->importer->preview( [ $entry ], $this->export['groups'] )['entries'][0];
+		$this->assertSame( 'overwrite', $preview['status'] );
+		$this->assertSame( 'Keep me', $preview['rule']['note'] );
+		$this->assertSame( 'Keep me', $preview['current']['note'] );
+
+		$this->importer->import( [ $entry ], $this->export['groups'] );
+		$after = $this->repo->find( $existing->id );
+		$this->assertSame( '/new/', $after->target );
+		$this->assertSame( 'Keep me', $after->note );
+	}
+
+	public function test_a_non_empty_title_replaces_the_existing_note(): void {
+		$existing       = $this->repo->insert( [ 'type' => 'exact', 'source' => '/note-swap', 'target' => '/old/', 'status_code' => 301, 'note' => 'Old note' ] );
+		$entry          = $this->entry( 1, '/note-swap/', '/new/' );
+		$entry['title'] = 'New note';
+
+		$this->assertSame( 'New note', $this->importer->preview( [ $entry ], $this->export['groups'] )['entries'][0]['rule']['note'] );
+		$this->importer->import( [ $entry ], $this->export['groups'] );
+		$this->assertSame( 'New note', $this->repo->find( $existing->id )->note );
 	}
 
 	public function test_own_host_absolute_source_overwrites_the_existing_path_rule(): void {

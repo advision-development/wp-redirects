@@ -49,6 +49,26 @@ final class RestImportTest extends Adv_Redirects_Rest_TestCase {
 		$this->assertSame( 2, $import->get_data()['counts']['created'] );
 	}
 
+	public function test_preview_reports_the_entry_that_supersedes_a_duplicate(): void {
+		$entries = $this->rest( 'POST', '/import/preview', $this->body( $this->export['redirects'] ) )->get_data()['entries'];
+		$by_id   = array_column( $entries, null, 'source_id' );
+
+		$this->assertSame( 'new', $by_id[9]['status'] );
+		$this->assertSame( '/fx-dupe-first/', $by_id[9]['rule']['target'] );
+		$this->assertSame( 'superseded', $by_id[10]['status'] );
+		$this->assertSame( 9, $by_id[10]['superseded_by'] );
+		$this->assertStringContainsString( '#9', $by_id[10]['error']['message'] );
+	}
+
+	public function test_a_disabled_group_status_reaches_the_importer(): void {
+		$body = $this->body( [ $this->export['redirects'][0] ] );
+		$body['groups'][0]['status'] = 'disabled';
+
+		$entry = $this->rest( 'POST', '/import/preview', $body )->get_data()['entries'][0];
+		$this->assertFalse( $entry['rule']['enabled'] );
+		$this->assertContains( 'group_disabled', $entry['notes'] );
+	}
+
 	public function test_permissions(): void {
 		foreach ( [ [ '/import/preview', true ], [ '/import', false ] ] as list( $route, $preview ) ) {
 			wp_set_current_user( 0 );

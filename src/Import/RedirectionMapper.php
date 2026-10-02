@@ -16,25 +16,32 @@ final class RedirectionMapper {
 	private const REDIRECT_STATUSES = [ 301, 302, 307, 308 ];
 
 	/**
+	 * A group is disabled when its `status` is "disabled" or its `enabled` flag is false; Redirection
+	 * skips every rule in such a group.
+	 *
 	 * @param array $groups Raw `groups` entries from the export.
-	 * @return array<int,string> Group id => name.
+	 * @return array<int,array{name:string,disabled:bool}> Group id => name and disabled flag.
 	 */
-	public static function group_names( array $groups ): array {
-		$names = [];
+	public static function group_info( array $groups ): array {
+		$info = [];
 		foreach ( $groups as $group ) {
 			if ( is_array( $group ) && isset( $group['id'], $group['name'] ) && self::is_int_like( $group['id'] ) && is_string( $group['name'] ) ) {
-				$names[ (int) $group['id'] ] = $group['name'];
+				$info[ (int) $group['id'] ] = [
+					'name'     => $group['name'],
+					'disabled' => ( isset( $group['status'] ) && 'disabled' === $group['status'] )
+						|| ( isset( $group['enabled'] ) && false === $group['enabled'] ),
+				];
 			}
 		}
-		return $names;
+		return $info;
 	}
 
 	/**
-	 * @param mixed             $entry       One raw entry from the export's `redirects` list.
-	 * @param array<int,string> $group_names From group_names().
+	 * @param mixed $entry  One raw entry from the export's `redirects` list.
+	 * @param array $groups From group_info().
 	 * @return array{ok:bool,source_id:int,rule:?array,notes:string[],error:?string}
 	 */
-	public static function map( $entry, array $group_names ): array {
+	public static function map( $entry, array $groups ): array {
 		$source_id = is_array( $entry ) && isset( $entry['id'] ) && self::is_int_like( $entry['id'] ) ? (int) $entry['id'] : 0;
 
 		if ( ! self::is_valid_entry( $entry ) ) {
@@ -77,8 +84,14 @@ final class RedirectionMapper {
 			$notes[] = 'regex_query';
 		}
 
+		$group    = $groups[ (int) $entry['group_id'] ] ?? [];
+		$name     = $group['name'] ?? '';
+		$disabled = ! empty( $group['disabled'] );
+		if ( $disabled ) {
+			$notes[] = 'group_disabled';
+		}
+
 		$title = isset( $entry['title'] ) && is_string( $entry['title'] ) ? $entry['title'] : '';
-		$group = $group_names[ (int) $entry['group_id'] ] ?? '';
 
 		return [
 			'ok'        => true,
@@ -88,9 +101,9 @@ final class RedirectionMapper {
 				'source'      => $entry['url'],
 				'target'      => $target,
 				'status_code' => $status,
-				'enabled'     => $entry['enabled'],
+				'enabled'     => $entry['enabled'] && ! $disabled,
 				'note'        => function_exists( 'mb_substr' ) ? mb_substr( $title, 0, 255 ) : substr( $title, 0, 255 ),
-				'origin'      => self::MODIFIED_POSTS_GROUP === $group ? 'auto' : 'manual',
+				'origin'      => self::MODIFIED_POSTS_GROUP === $name ? 'auto' : 'manual',
 			],
 			'notes'     => $notes,
 			'error'     => null,

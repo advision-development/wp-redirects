@@ -10,7 +10,7 @@ final class RedirectionMapperTest extends TestCase {
 
 	public static function setUpBeforeClass(): void {
 		self::$export = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/fixtures/redirection-export-sample.json' ), true );
-		self::$groups = RedirectionMapper::group_names( self::$export['groups'] );
+		self::$groups = RedirectionMapper::group_info( self::$export['groups'] );
 	}
 
 	private function entry( int $id ): array {
@@ -26,9 +26,40 @@ final class RedirectionMapperTest extends TestCase {
 		return RedirectionMapper::map( $this->entry( $id ), self::$groups );
 	}
 
-	public function test_group_names(): void {
-		$this->assertSame( [ 1 => 'Redirections', 2 => 'Modified Posts' ], self::$groups );
-		$this->assertSame( [], RedirectionMapper::group_names( [ 'junk', [ 'id' => 'x' ] ] ) );
+	public function test_group_info(): void {
+		$this->assertSame(
+			[
+				1 => [ 'name' => 'Redirections', 'disabled' => false ],
+				2 => [ 'name' => 'Modified Posts', 'disabled' => false ],
+			],
+			self::$groups
+		);
+		$this->assertSame( [], RedirectionMapper::group_info( [ 'junk', [ 'id' => 'x' ] ] ) );
+	}
+
+	public function test_group_info_flags_disabled_groups(): void {
+		$info = RedirectionMapper::group_info(
+			[
+				[ 'id' => 1, 'name' => 'A', 'status' => 'disabled' ],
+				[ 'id' => 2, 'name' => 'B', 'enabled' => false ],
+				[ 'id' => 3, 'name' => 'C', 'status' => 'enabled', 'enabled' => true ],
+				[ 'id' => 4, 'name' => 'D' ],
+			]
+		);
+		$this->assertTrue( $info[1]['disabled'] );
+		$this->assertTrue( $info[2]['disabled'] );
+		$this->assertFalse( $info[3]['disabled'] );
+		$this->assertFalse( $info[4]['disabled'] );
+	}
+
+	public function test_entry_in_a_disabled_group_maps_disabled_with_a_note(): void {
+		$groups = RedirectionMapper::group_info( [ [ 'id' => 1, 'name' => 'Redirections', 'status' => 'disabled' ] ] );
+		$mapped = RedirectionMapper::map( $this->entry( 1 ), $groups );
+		$this->assertTrue( $mapped['ok'] );
+		$this->assertFalse( $mapped['rule']['enabled'] );
+		$this->assertSame( [ 'group_disabled' ], $mapped['notes'] );
+
+		$this->assertTrue( $this->map( 1 )['rule']['enabled'], 'An enabled group leaves the entry enabled.' );
 	}
 
 	public function test_maps_a_plain_exact_redirect(): void {

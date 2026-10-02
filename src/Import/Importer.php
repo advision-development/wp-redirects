@@ -74,13 +74,15 @@ final class Importer {
 				continue;
 			}
 			if ( $item['superseded'] ) {
-				$entry['status'] = 'superseded';
-				$entries[]       = $entry;
+				$entry['status']        = 'superseded';
+				$entry['superseded_by'] = $item['superseded_by'];
+				$entry['error']         = self::superseded_reason( (int) $item['superseded_by'] );
+				$entries[]              = $entry;
 				continue;
 			}
 
 			$existing = $this->existing_for( $item['rule'], $lookup );
-			$result   = $this->validator->validate( self::validator_input( $item['rule'] ), null !== $existing ? $existing->id : null, $pending );
+			$result   = $this->validator->validate( self::validator_input( $item['rule'], $existing ), null !== $existing ? $existing->id : null, $pending );
 			if ( is_wp_error( $result ) ) {
 				$entry['status'] = 'skipped';
 				$entry['error']  = [
@@ -101,6 +103,7 @@ final class Importer {
 					'target'      => $existing->target,
 					'status_code' => $existing->status_code,
 					'enabled'     => $existing->enabled,
+					'note'        => $existing->note,
 				];
 			}
 
@@ -216,16 +219,14 @@ final class Importer {
 				continue;
 			}
 			if ( $item['superseded'] ) {
-				$entry['error'] = [
-					'code'    => 'superseded',
-					'message' => __( 'A later entry in the file uses the same source.', 'wp-redirects' ),
-				];
-				$entries[]      = $entry;
+				$entry['error']         = self::superseded_reason( (int) $item['superseded_by'] );
+				$entry['superseded_by'] = $item['superseded_by'];
+				$entries[]              = $entry;
 				continue;
 			}
 
 			$existing = $this->existing_for( $item['rule'] );
-			$result   = $this->validator->validate( self::validator_input( $item['rule'] ), null !== $existing ? $existing->id : null );
+			$result   = $this->validator->validate( self::validator_input( $item['rule'], $existing ), null !== $existing ? $existing->id : null );
 			if ( is_wp_error( $result ) ) {
 				$entry['error'] = [
 					'code'    => (string) $result->get_error_code(),
@@ -275,24 +276,33 @@ final class Importer {
 	}
 
 	/**
-	 * Maps entries, applies the filter and marks in-file duplicates (the later entry wins).
+	 * Maps entries, applies the filter and marks in-file duplicates.
 	 *
-	 * @return array<int,array{source_id:int,source:string,rule:?array,notes:array,error:?string,superseded:bool}>
+	 * Redirection serves the first enabled match in position order, so among entries with the same
+	 * conflict key (in the order received, which the client sorts by position) the winner is the
+	 * first one that maps and passes the filter and is enabled; if none is enabled, the first one
+	 * that maps. Every other entry with that key is superseded by the winner.
+	 *
+	 * The winner is chosen before validation. If it later fails validation it is reported as
+	 * skipped and no superseded copy is imported in its place: those copies were never served by
+	 * Redirection, so importing one would add a redirect the site never had.
+	 *
+	 * @return array<int,array{source_id:int,source:string,rule:?array,notes:array,error:?string,superseded:bool,superseded_by:?int}>
 	 */
 	private function plan( array $redirects, array $groups ): array {
-		$names   = RedirectionMapper::group_names( $groups );
+		$info    = RedirectionMapper::group_info( $groups );
 		$planned = [];
-		$last    = [];
 
 		foreach ( array_values( $redirects ) as $index => $raw ) {
-			$mapped = RedirectionMapper::map( $raw, $names );
+			$mapped = RedirectionMapper::map( $raw, $info );
 			$item   = [
-				'source_id'  => $mapped['source_id'],
-				'source'     => is_array( $raw ) && isset( $raw['url'] ) && is_string( $raw['url'] ) ? $raw['url'] : '',
-				'rule'       => $mapped['rule'],
-				'notes'      => $mapped['notes'],
-				'error'      => $mapped['error'],
-				'superseded' => false,
+				'source_id'     => $mapped['source_id'],
+				'source'        => is_array( $raw ) && isset( $raw['url'] ) && is_string( $raw['url'] ) ? $raw['url'] : '',
+				'rule'          => $mapped['rule'],
+				'notes'         => $mapped['notes'],
+				'error'         => $mapped['error'],
+				'superseded'    => false,
+				'superseded_by' => null,
 			];
 
 			if ( $mapped['ok'] ) {
@@ -317,15 +327,31 @@ final class Importer {
 				}
 			}
 
-			if ( null !== $item['rule'] ) {
-				$last[ self::conflict_key( $item['rule'] ) ] = $index;
-			}
 			$planned[ $index ] = $item;
 		}
 
+		// Decide each key's winner after the filter, so a skipped or unmappable entry never wins.
+		$winners = [];
 		foreach ( $planned as $index => $item ) {
-			if ( null !== $item['rule'] && $last[ self::conflict_key( $item['rule'] ) ] !== $index ) {
-				$planned[ $index ]['superseded'] = true;
+			if ( null === $item['rule'] ) {
+				continue;
+			}
+			$key = self::conflict_key( $item['rule'] );
+			if ( ! isset( $winners[ $key ] ) ) {
+				$winners[ $key ] = $index;
+			} elseif ( empty( $planned[ $winners[ $key ] ]['rule']['enabled'] ) && ! empty( $item['rule']['enabled'] ) ) {
+				$winners[ $key ] = $index;
+			}
+		}
+
+		foreach ( $planned as $index => $item ) {
+			if ( null === $item['rule'] ) {
+				continue;
+			}
+			$winner = $winners[ self::conflict_key( $item['rule'] ) ];
+			if ( $winner !== $index ) {
+				$planned[ $index ]['superseded']    = true;
+				$planned[ $index ]['superseded_by'] = $planned[ $winner ]['source_id'];
 			}
 		}
 
@@ -360,7 +386,7 @@ final class Importer {
 	 */
 	private function existing_for( array $rule, ?array $lookup = null ): ?Rule {
 		if ( 'regex' === $rule['type'] ) {
-			$source = (string) $rule['source'];
+			$source = trim( (string) $rule['source'] );
 			return null !== $lookup ? ( $lookup['regex'][ $source ] ?? null ) : $this->repository->regex_rule_by_source( $source );
 		}
 		$key = PathNormalizer::source_key( self::exact_path( (string) $rule['source'] ) );
@@ -383,7 +409,7 @@ final class Importer {
 
 	private static function conflict_key( array $rule ): string {
 		return 'regex' === $rule['type']
-			? 'r:' . $rule['source']
+			? 'r:' . trim( (string) $rule['source'] )
 			: 'e:' . PathNormalizer::source_key( self::exact_path( (string) $rule['source'] ) );
 	}
 
@@ -409,8 +435,30 @@ final class Importer {
 		return true;
 	}
 
-	private static function validator_input( array $rule ): array {
-		return array_intersect_key( $rule, array_flip( self::RULE_FIELDS ) );
+	/**
+	 * An empty imported title never wipes an existing rule's note: the note is left out so the
+	 * Validator keeps the stored one.
+	 */
+	private static function validator_input( array $rule, ?Rule $existing = null ): array {
+		$input = array_intersect_key( $rule, array_flip( self::RULE_FIELDS ) );
+		if ( null !== $existing && '' !== (string) $existing->note && '' === trim( (string) ( $input['note'] ?? '' ) ) ) {
+			unset( $input['note'] );
+		}
+		return $input;
+	}
+
+	/**
+	 * @return array{code:string,message:string}
+	 */
+	private static function superseded_reason( int $winner_id ): array {
+		return [
+			'code'    => 'superseded',
+			'message' => sprintf(
+				/* translators: %d: Redirection entry id */
+				__( 'Redirection used entry #%d for this source; this copy was never served.', 'wp-redirects' ),
+				$winner_id
+			),
+		];
 	}
 
 	/**
