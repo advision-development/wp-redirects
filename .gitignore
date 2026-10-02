@@ -8,3 +8,7 @@
 .wp-env.override.json
 .phpunit.result.cache
 .DS_Store
+
+# Real redirect exports (contain site data) — never commit
+/redirection-export*.json
+/*-export.json

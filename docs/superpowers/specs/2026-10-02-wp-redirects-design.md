@@ -37,7 +37,7 @@ A WordPress redirect manager comparable to Yoast SEO Premium's redirect feature,
 
 ### Out of v1 (candidates for v2)
 
-- CSV import/export
+- CSV import/export, and export of any kind (JSON import from the Redirection plugin is in scope; see §17)
 - Taxonomy term slug-change redirects
 - Redirect-on-trash/delete prompts
 - Multisite network support
@@ -471,3 +471,121 @@ All hooks are documented with docblocks in code and in `docs/hooks.md`.
 5. Additional units: `Matching/UrlSafety`, `Matching/Pattern`, `Matching/RulesetCompiler`, `Redirects/ChainResolver`, `Site`, `Permissions`, `Uninstaller`, `Rest/BaseController`.
 6. Bulk enable re-validates each rule. Rules that would create a loop are left disabled and returned in `skipped`.
 7. Final review fixes: the Test URL tool and the chain walk skip what the Redirector never handles (reserved paths and a non-empty `rest_route` query). The test endpoint answers `matched: false, reason: "reserved"` for them. Exact rules reject `$1`-`$9` in the target (`adv_redirects_invalid_target`), since only regex rules substitute captures. The plugin header carries `Update URI` so WordPress core never checks wordpress.org for the `wp-redirects` slug.
+8. Import from the Redirection plugin (JSON export) is added to scope; see §17.
+
+## 17. Import from Redirection (added 2026-10-02)
+
+### 17.1 Purpose and scope
+
+Admins upload a JSON export from the **Redirection** plugin (tested against v5.10.1) and import its redirect rules.
+
+- **Imported:** redirect rules. Rules in Redirection's "Modified Posts" group get `origin = auto`; every other rule gets `manual`.
+- **Not imported:** hit counts, last-access dates, the `logs` section and the `errors_404` section.
+- **Privacy:** the `logs` and `errors_404` sections contain IP addresses and user agents. They are stripped in the browser and never sent to the server (§12).
+
+### 17.2 Flow
+
+1. **Browser schema check.** The admin reads the file with `FileReader` and checks it:
+   - root is an object with `plugin.version` (string) and `redirects` (array)
+   - each redirect has `url` (string), `regex` (boolean), `action_type` (string), `action_code` (integer), `action_data` (object), `match_type` (string), `enabled` (boolean) and `group_id` (integer)
+   - `groups`, when present, is an array of objects with `id` (integer) and `name` (string)
+   - **On failure:** show up to 5 problems with their entry numbers, and send nothing.
+2. **Strip.** Only `plugin.version`, `groups` (id and name) and `redirects` are kept for sending.
+3. **Preview (dry run).** `POST /import/preview` maps and validates every entry and writes nothing.
+4. **Import.** `POST /import` takes batches of at most 50 entries, sent in file order, one batch at a time. The browser shows progress per batch and can cancel between batches.
+
+### 17.3 Mapping (`Import\RedirectionMapper`, pure PHP)
+
+| Redirection field | WP Redirects field |
+|---|---|
+| `regex` | `type` (`regex` / `exact`) |
+| `url` (not `match_url`) | `source` |
+| `action_data.url` | `target` (`$1`-`$9` kept for regex rules) |
+| `action_code` | `status_code` |
+| `enabled` | `enabled` |
+| `title` | `note`, truncated to 255 characters |
+| group named "Modified Posts" | `origin = auto` |
+| `position` | regex evaluation order |
+
+`action_type = error` with code 410 maps to a 410 rule with a null target.
+
+**Skipped, each with a stable reason code:**
+
+| Condition | Reason code |
+|---|---|
+| `match_type` is not `url` | `unsupported_match_type` |
+| `action_type` is `random`, `pass` or `nothing` | `unsupported_action` |
+| `error` with any code other than 410 | `unsupported_action` |
+| status code outside {301, 302, 307, 308, 410, 451} | `unsupported_status` |
+| malformed entry that slipped past the client check | `invalid_entry` |
+
+**Imported, with a note attached:**
+
+| Condition | Note code |
+|---|---|
+| `flag_case` false | `case_insensitive` (WP Redirects always ignores case) |
+| `flag_trailing` false | `trailing_slash_ignored` |
+| `flag_query` is `ignore` or `pass` | `query_mode` (WP Redirects matches the query only when the source contains one, and forwards per the global setting) |
+| regex pattern containing `\?` | `regex_query` (regex rules match the path only) |
+
+The filter `adv_redirects_import_rule( array|false $rule, array $entry )` can modify a mapped rule or skip it by returning `false`.
+
+### 17.4 "Import wins" and validation
+
+**Conflicts with existing rules:**
+- An existing exact rule with the same normalized source key is **updated in place**. It keeps its id and hits.
+- An existing regex rule with an identical pattern string is updated in place the same way.
+- The preview reports these as `overwrite`, with the current and imported target and status.
+
+**Duplicates within the file:** the later entry wins. Earlier duplicates are reported as `superseded`.
+
+**Validation:**
+- Every mapped rule passes through `Validator::validate()`, with the existing rule's id when overwriting. Failures are `skipped` with the validator's error code and message.
+- Chain warnings are reported as `warning` and the rule still imports.
+- **Preview accuracy:** the Validator accepts optional *pending rows*, the import rules ahead of the current one in the file. Loops that form only between imported rules therefore appear in the preview. Normal saves pass no pending rows and behave unchanged.
+
+### 17.5 REST
+
+Both routes use the standard permission check and argument schemas, and reject unknown fields.
+
+| Route | Body | Response |
+|---|---|---|
+| `POST /import/preview` | `{ source: "redirection", version, groups, redirects }`, max 5,000 redirects | per-entry `{ index, source_id, status: new\|overwrite\|superseded\|skipped, warnings[], notes[], rule, existing_id?, current? , error? }` plus `counts` |
+| `POST /import` | `{ source: "redirection", groups, redirects }`, max 50 redirects; caller sends batches in file order | per-entry `{ index, result: created\|updated\|skipped, rule_id?, error? }` plus `counts` |
+
+- Writes go through `Repository` (cache flush and rule hooks fire as for manual edits).
+- The action `adv_redirects_import_completed( array $counts )` fires once per import batch.
+
+### 17.6 Admin UI: Import tab (fourth tab)
+
+1. **File picker and drop zone** (`.json`). The copy says only redirect rules are read, and that logs and 404 data stay on the user's computer.
+2. **Schema-check result:**
+   - **failure:** an error notice listing the problems
+   - **success:** a summary card with plugin version, export date, exact and regex counts, and counts of logs and 404 records that won't be imported
+3. **Preview** in collapsible groups: New, Will overwrite (old → new target and status), Chain warnings, Skipped (with reason), and Superseded. Notes show on the affected rows.
+4. **Import button** states the outcome, e.g. "Import 94 redirects (3 overwrite existing)".
+5. **Progress:** a native `<progress>` element with a percentage and an `aria-live` "Imported X of Y". **Cancel** stops after the current batch.
+6. **Result:** counts of created, updated and skipped. **Download report** saves skipped and superseded entries with their reasons as JSON. **View redirects** switches to the Redirects tab, and the rule list reloads.
+7. **If a batch fails:** stop, and show how many rules were imported. Re-running the same file is safe, since rules are overwritten again.
+
+### 17.7 Testing
+
+- **Fixture:** `tests/fixtures/redirection-export-sample.json`, hand-made, with no real site data. It covers:
+  - exact and regex rules
+  - an in-file duplicate, a loop between imported rules, and a chain
+  - an unsupported `match_type`, a 410 `error` rule, a 303 rule, and a `random` action
+  - "Modified Posts"
+  - case, trailing and query flags
+  - fake `logs` and `errors_404` entries
+- **Jest:** schema check (valid, wrong plugin shape, missing fields, wrong types), the strip step, and batch splitting.
+- **PHPUnit unit:** `RedirectionMapper`, covering every mapping, skip reason and note.
+- **PHPUnit integration:**
+  - preview vs import parity
+  - a loop only between imported rules is caught in preview
+  - overwrite keeps id and hits
+  - "Modified Posts" becomes auto
+  - `superseded` duplicates
+  - limits (5,000 / 50), unknown fields, and permissions
+  - re-import is idempotent
+- **Playwright:** upload the fixture, check preview counts, import, see the progress bar reach 100%, and find the new rules on the Redirects tab.
+- **Never committed:** real exports. `.gitignore` excludes `/redirection-export*.json` and `/*-export.json`.
