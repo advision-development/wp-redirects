@@ -26,21 +26,39 @@ function showRule( ruleId ) {
 	return true;
 }
 
-function MatchedRule( { result, rule } ) {
+function MatchedRule( { result, rule, onReveal } ) {
 	const [ hidden, setHidden ] = useState( false );
 	if ( ! rule ) {
 		return null;
 	}
+
+	const show = () => {
+		if ( showRule( result.rule_id ) ) {
+			setHidden( false );
+			return;
+		}
+		// Not rendered: ask the table to page to it, then look again once it
+		// has re-rendered. Only a rule that is still missing is "hidden".
+		onReveal( result.rule_id );
+		let tries = 0;
+		const retry = () => {
+			if ( showRule( result.rule_id ) ) {
+				setHidden( false );
+			} else if ( ++tries < 3 ) {
+				window.requestAnimationFrame( retry );
+			} else {
+				setHidden( true );
+			}
+		};
+		window.requestAnimationFrame( retry );
+	};
 	return (
 		<span className="adv-redirects-test__rule">
 			{ rule.type === 'regex'
 				? __( 'Matched regex redirect:', 'wp-redirects' )
 				: __( 'Matched exact redirect:', 'wp-redirects' ) }{ ' ' }
 			<code>{ rule.source }</code>{ ' ' }
-			<Button
-				variant="link"
-				onClick={ () => setHidden( ! showRule( result.rule_id ) ) }
-			>
+			<Button variant="link" onClick={ show }>
 				{ __( 'Show rule', 'wp-redirects' ) }
 			</Button>
 			{ hidden && (
@@ -55,7 +73,7 @@ function MatchedRule( { result, rule } ) {
 	);
 }
 
-function TestResult( { result, rules } ) {
+function TestResult( { result, rules, onReveal } ) {
 	if ( ! result.matched ) {
 		const messages = {
 			external: __( 'That URL is on another site.', 'wp-redirects' ),
@@ -72,7 +90,9 @@ function TestResult( { result, rules } ) {
 		);
 	}
 	const rule = rules.find( ( item ) => item.id === result.rule_id );
-	const matched = <MatchedRule result={ result } rule={ rule } />;
+	const matched = (
+		<MatchedRule result={ result } rule={ rule } onReveal={ onReveal } />
+	);
 	if ( result.blocked ) {
 		return (
 			<>
@@ -136,6 +156,7 @@ export default function TestUrlBar( {
 	value,
 	onChange,
 	onResult,
+	onReveal,
 	rules = [],
 } ) {
 	const [ result, setResult ] = useState( null );
@@ -217,6 +238,7 @@ export default function TestUrlBar( {
 						key={ runId }
 						result={ result }
 						rules={ rules }
+						onReveal={ onReveal }
 					/>
 				) }
 			</div>

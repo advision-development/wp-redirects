@@ -69,6 +69,8 @@ export default function RulesTable( {
 	mode,
 	rules,
 	highlightId,
+	revealId,
+	revealToken,
 	onUpdate,
 	onRemove,
 	onBulk,
@@ -88,13 +90,6 @@ export default function RulesTable( {
 	const editButtons = useRef( {} );
 	// The rule whose Edit button gets focus back once its edit row closes.
 	const [ returnFocusId, setReturnFocusId ] = useState( null );
-
-	useEffect( () => {
-		if ( returnFocusId !== null && editingId === null ) {
-			editButtons.current[ returnFocusId ]?.focus();
-			setReturnFocusId( null );
-		}
-	}, [ returnFocusId, editingId ] );
 
 	// Set when a move carried a rule onto another page, so focus can follow it.
 	const moveFocus = useRef( null );
@@ -126,43 +121,70 @@ export default function RulesTable( {
 		const list = filterRules( rules, filters );
 		return isRegex ? list : sortRules( list, sort );
 	}, [ rules, filters, sort, isRegex ] );
-	const pageInfo = paginate( visible, page, pageSize );
+	const pageInfo = useMemo(
+		() => paginate( visible, page, pageSize ),
+		[ visible, page, pageSize ]
+	);
 	const pageRules = pageInfo.items;
-	const pageIds = pageRules.map( ( rule ) => rule.id );
+	const pageIds = useMemo(
+		() => pageRules.map( ( rule ) => rule.id ),
+		[ pageRules ]
+	);
 	// Only rows that are both ticked and on the current page take part in bulk
 	// actions, so filtering or paging never leaves hidden rows selected.
 	const activeSelection = visibleSelection( selected, pageIds );
 	const allSelected =
 		pageIds.length > 0 && activeSelection.length === pageIds.length;
 	const showPager = visible.length > MIN_PAGE_ROWS;
-	const pageIdsKey = pageIds.join( ',' );
 
 	useEffect( () => {
 		setSelected( ( current ) => {
-			const next = visibleSelection(
-				current,
-				pageIdsKey ? pageIdsKey.split( ',' ).map( Number ) : []
-			);
+			const next = visibleSelection( current, pageIds );
 			return next.length === current.length ? current : next;
 		} );
-	}, [ pageIdsKey ] );
+	}, [ pageIds ] );
 
-	// A rule picked by the Test URL tool may be on another page: show that page
-	// so "Show rule" finds its row. Only reacts to a new match, never to paging.
-	const latest = useRef( {} );
-	latest.current = { visible, pageSize };
+	// "Show rule" asks for a rule that may be on another page: page to it so
+	// its row exists. Only a new request counts, never ordinary paging.
+	const handledReveal = useRef( revealToken );
 	useEffect( () => {
-		if ( highlightId === null || highlightId === undefined ) {
+		if ( handledReveal.current === revealToken ) {
 			return;
 		}
-		const { visible: list, pageSize: size } = latest.current;
-		const index = list.findIndex( ( rule ) => rule.id === highlightId );
+		handledReveal.current = revealToken;
+		const index = visible.findIndex( ( rule ) => rule.id === revealId );
 		if ( index !== -1 ) {
-			setPage( pageOfIndex( index, size ) );
+			setPage( pageOfIndex( index, pageSize ) );
 		}
-	}, [ highlightId ] );
+		// Deliberately keyed on the request only.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ revealToken ] );
+
+	// Focus goes back to a row's Edit button once it is rendered. After a failed
+	// delete the rule can come back on another page, so page to it first.
+	useEffect( () => {
+		if ( returnFocusId === null || editingId !== null ) {
+			return;
+		}
+		const button = editButtons.current[ returnFocusId ];
+		if ( button ) {
+			button.focus();
+			setReturnFocusId( null );
+			return;
+		}
+		const index = visible.findIndex(
+			( rule ) => rule.id === returnFocusId
+		);
+		const target = pageOfIndex( index, pageSize );
+		if ( index !== -1 && target !== pageInfo.page ) {
+			setPage( target );
+		} else {
+			setReturnFocusId( null );
+		}
+	}, [ returnFocusId, editingId, visible, pageSize, pageInfo.page ] );
 
 	const colSpan = isRegex ? 9 : 8;
+	// Takes a filters object or an updater function, like setFilters.
 	const changeFilters = ( next ) => {
 		setFilters( next );
 		setPage( 0 );
@@ -172,7 +194,7 @@ export default function RulesTable( {
 		setPage( 0 );
 	};
 	const setFilter = ( key ) => ( value ) =>
-		changeFilters( { ...filters, [ key ]: value } );
+		changeFilters( ( current ) => ( { ...current, [ key ]: value } ) );
 	const reportError = ( error ) =>
 		notify( { status: 'error', message: errorMessage( error ) } );
 
@@ -433,10 +455,14 @@ export default function RulesTable( {
 											allSelected ? [] : pageIds
 										)
 									}
-									aria-label={ __(
-										'Select all',
-										'wp-redirects'
-									) }
+									aria-label={
+										pageInfo.pageCount > 1
+											? __(
+													'Select all on this page',
+													'wp-redirects'
+												)
+											: __( 'Select all', 'wp-redirects' )
+									}
 								/>
 							</td>
 							{ isRegex && (
@@ -569,8 +595,8 @@ export default function RulesTable( {
 					pageSize={ pageSize }
 					label={
 						isRegex
-							? __( 'Regex redirects pages', 'wp-redirects' )
-							: __( 'Exact redirects pages', 'wp-redirects' )
+							? __( 'Regex redirects pagination', 'wp-redirects' )
+							: __( 'Exact redirects pagination', 'wp-redirects' )
 					}
 					onPage={ setPage }
 					onPageSize={ ( size ) => {

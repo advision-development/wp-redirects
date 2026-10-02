@@ -1,5 +1,5 @@
-import { Button, SelectControl } from '@wordpress/components';
-import { useEffect, useRef } from '@wordpress/element';
+import { Button, SelectControl, VisuallyHidden } from '@wordpress/components';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { PAGE_SIZES } from '../utils/paging';
 
@@ -32,6 +32,11 @@ export default function RulesPager( {
 	// Which button to focus after the page changed, because the one that was
 	// just used may now be disabled.
 	const focusAfter = useRef( null );
+	// Screen readers hear the new range only after the user paged or changed
+	// the size, not on every search keystroke or delete that changes the total.
+	const announcePending = useRef( false );
+	const [ announcement, setAnnouncement ] = useState( '' );
+	const range = rangeText( info, pageSize );
 
 	useEffect( () => {
 		const target = focusAfter.current;
@@ -41,7 +46,21 @@ export default function RulesPager( {
 		} else if ( target === 'next' ) {
 			next.current?.focus();
 		}
-	}, [ info.page ] );
+		if ( announcePending.current ) {
+			announcePending.current = false;
+			setAnnouncement(
+				sprintf(
+					/* translators: 1: current page, 2: number of pages, 3: range of rows, such as "1–25 of 94" */
+					__( 'Page %1$d of %2$d: %3$s', 'wp-redirects' ),
+					info.page + 1,
+					info.pageCount,
+					range
+				)
+			);
+		}
+		// Runs when the page or size changed, which is what is announced.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [ info.page, pageSize ] );
 
 	const atStart = info.page === 0;
 	const atEnd = info.page >= info.pageCount - 1;
@@ -53,14 +72,16 @@ export default function RulesPager( {
 		} else if ( direction > 0 && target >= info.pageCount - 1 ) {
 			focusAfter.current = 'previous';
 		}
+		announcePending.current = true;
 		onPage( target );
 	};
 
 	return (
 		<div className="adv-redirects-pager" role="group" aria-label={ label }>
-			<span className="adv-redirects-pager__range" aria-live="polite">
-				{ rangeText( info, pageSize ) }
-			</span>
+			<span className="adv-redirects-pager__range">{ range }</span>
+			<VisuallyHidden role="status" aria-live="polite">
+				{ announcement }
+			</VisuallyHidden>
 			<SelectControl
 				__nextHasNoMarginBottom
 				className="adv-redirects-pager__size"
@@ -74,7 +95,10 @@ export default function RulesPager( {
 							? __( 'All', 'wp-redirects' )
 							: String( size ),
 				} ) ) }
-				onChange={ ( value ) => onPageSize( Number( value ) ) }
+				onChange={ ( value ) => {
+					announcePending.current = true;
+					onPageSize( Number( value ) );
+				} }
 			/>
 			<div className="adv-redirects-pager__nav">
 				<Button
@@ -85,7 +109,6 @@ export default function RulesPager( {
 					disabled={ atStart }
 					onClick={ () => go( -1 ) }
 				>
-					<span aria-hidden="true">‹ </span>
 					{ __( 'Previous', 'wp-redirects' ) }
 				</Button>
 				<Button
@@ -97,7 +120,6 @@ export default function RulesPager( {
 					onClick={ () => go( 1 ) }
 				>
 					{ __( 'Next', 'wp-redirects' ) }
-					<span aria-hidden="true"> ›</span>
 				</Button>
 			</div>
 		</div>

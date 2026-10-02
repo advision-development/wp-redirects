@@ -55,6 +55,9 @@ export function readPageSize() {
 }
 
 export function writePageSize( size ) {
+	if ( ! PAGE_SIZES.includes( size ) ) {
+		return;
+	}
 	try {
 		window.localStorage.setItem( STORAGE_KEY, String( size ) );
 	} catch {

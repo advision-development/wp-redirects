@@ -14,6 +14,9 @@ export default function RedirectsTab( {
 } ) {
 	const [ testPath, setTestPath ] = useState( '' );
 	const [ highlightId, setHighlightId ] = useState( null );
+	// "Show rule" asked for a rule that may be on another page; the token makes
+	// asking again for the same rule count as a new request.
+	const [ reveal, setReveal ] = useState( { id: null, token: 0 } );
 	const { exact, regex } = useMemo(
 		() => splitByType( redirects.items ),
 		[ redirects.items ]
@@ -43,6 +46,8 @@ export default function RedirectsTab( {
 
 	const tableProps = {
 		highlightId,
+		revealId: reveal.id,
+		revealToken: reveal.token,
 		notify,
 		onUpdate: redirects.update,
 		onRemove: redirects.remove,
@@ -58,6 +63,12 @@ export default function RedirectsTab( {
 					value={ testPath }
 					onChange={ setTestPath }
 					onResult={ setHighlightId }
+					onReveal={ ( id ) =>
+						setReveal( ( current ) => ( {
+							id,
+							token: current.token + 1,
+						} ) )
+					}
 					rules={ redirects.items }
 				/>
 			</section>
