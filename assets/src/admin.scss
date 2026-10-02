@@ -3,6 +3,11 @@
 	--adv-radius: 8px;
 	--adv-border: #dcdcde;
 	--adv-muted: #646970;
+	// Quieter than muted for the attribution line: lightest gray that still
+	// keeps 4.5:1 at 12px on white and on the row hover background.
+	--adv-meta: #6e7278;
+	// The attribution line while its row is hovered, focused or highlighted.
+	--adv-meta-strong: #50575e;
 	--adv-surface: #fff;
 	--adv-accent: var(--wp-admin-theme-color, #3858e9);
 	--adv-danger: #d63638;
@@ -369,16 +374,34 @@
 
 .adv-redirects-meta {
 	align-items: center;
-	color: var(--adv-muted);
+	color: var(--adv-meta);
 	display: flex;
 	flex-wrap: wrap;
 	font-size: 12px;
 	gap: 4px 6px;
 	margin-top: 4px;
+	transition: color 0.1s;
+
+	@media (prefers-reduced-motion: reduce) {
+		transition: none;
+	}
 }
 
+// The pill's gray background needs the darker muted text to keep 4.5:1.
 .adv-redirects-meta .adv-redirects-flag {
-	color: #1d2327;
+	color: var(--adv-muted);
+}
+
+// A hover/highlight tint lowers contrast, so darken the line on interaction.
+.adv-redirects-row {
+	&:hover,
+	&:focus-within,
+	&.is-highlighted {
+		.adv-redirects-meta,
+		.adv-redirects-meta .adv-redirects-flag {
+			color: var(--adv-meta-strong);
+		}
+	}
 }
 
 .adv-redirects-editrow__meta {
