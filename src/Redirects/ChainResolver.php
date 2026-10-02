@@ -43,6 +43,11 @@ final class ChainResolver {
 				return self::result( false, $hops, $current );
 			}
 
+			// The redirector never handles these paths, so the walk ends here and cannot loop.
+			if ( Site::is_unhandled_request( $request ) ) {
+				return self::result( false, $hops, $current );
+			}
+
 			$key = $request['key'] . ( '' !== $request['query'] ? '?' . $request['query'] : '' );
 			if ( isset( $seen[ $key ] ) ) {
 				return self::result( true, $hops, $current );

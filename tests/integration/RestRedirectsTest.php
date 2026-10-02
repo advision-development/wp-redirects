@@ -165,6 +165,33 @@ final class RestRedirectsTest extends Adv_Redirects_Rest_TestCase {
 		$this->assertSame( 403, $this->rest( 'POST', '/test', [ 'path' => '/a' ] )->get_status() );
 	}
 
+	public function test_test_endpoint_skips_paths_the_runtime_never_handles(): void {
+		$this->create( [ 'type' => 'regex', 'source' => '^/(.*)$', 'target' => 'https://new.com/$1', 'status_code' => 301 ] );
+
+		$this->assertTrue( $this->rest( 'POST', '/test', [ 'path' => '/anything' ] )->get_data()['matched'] );
+
+		foreach ( [ '/wp-admin/', '/wp-login.php', '/?rest_route=/wp/v2/posts' ] as $path ) {
+			$result = $this->rest( 'POST', '/test', [ 'path' => $path ] )->get_data();
+			$this->assertFalse( $result['matched'], $path );
+			$this->assertSame( 'reserved', $result['reason'], $path );
+		}
+	}
+
+	public function test_chain_walk_stops_at_reserved_hops(): void {
+		$this->create( [ 'type' => 'regex', 'source' => '^/(.*)$', 'target' => 'https://new.com/$1', 'status_code' => 301 ] );
+
+		$response = $this->create( [ 'type' => 'exact', 'source' => '/go', 'target' => '/wp-admin/', 'status_code' => 301 ] );
+		$this->assertSame( 201, $response->get_status() );
+		$this->assertSame( [], $response->get_data()['warnings'], 'The runtime never redirects /wp-admin, so there is no second hop.' );
+
+		$result = $this->rest( 'POST', '/test', [ 'path' => '/go' ] )->get_data();
+		$this->assertSame( [ '/go', 'http://example.org/wp-admin/' ], $result['hops'] );
+		$this->assertFalse( $result['loop'] );
+
+		$rest = $this->create( [ 'type' => 'exact', 'source' => '/api', 'target' => '/?rest_route=/wp/v2/posts', 'status_code' => 301 ] );
+		$this->assertSame( [], $rest->get_data()['warnings'] );
+	}
+
 	public function test_unknown_fields_rejected_on_bulk_reorder_and_test(): void {
 		$id = $this->create( [ 'type' => 'exact', 'source' => '/a', 'target' => '/b', 'status_code' => 301 ] )->get_data()['rule']['id'];
 

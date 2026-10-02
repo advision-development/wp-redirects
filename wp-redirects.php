@@ -10,6 +10,7 @@
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wp-redirects
+ * Update URI:        https://github.com/advision-development/wp-redirects
  *
  * @package Advision\Redirects
  */

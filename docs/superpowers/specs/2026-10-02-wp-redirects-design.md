@@ -470,3 +470,4 @@ All hooks are documented with docblocks in code and in `docs/hooks.md`.
 4. The slug watcher captures descendant permalinks before the update (in `pre_post_update`) instead of deriving them by prefix replacement.
 5. Additional units: `Matching/UrlSafety`, `Matching/Pattern`, `Matching/RulesetCompiler`, `Redirects/ChainResolver`, `Site`, `Permissions`, `Uninstaller`, `Rest/BaseController`.
 6. Bulk enable re-validates each rule. Rules that would create a loop are left disabled and returned in `skipped`.
+7. Final review fixes: the Test URL tool and the chain walk skip what the Redirector never handles (reserved paths and a non-empty `rest_route` query). The test endpoint answers `matched: false, reason: "reserved"` for them. Exact rules reject `$1`-`$9` in the target (`adv_redirects_invalid_target`), since only regex rules substitute captures. The plugin header carries `Update URI` so WordPress core never checks wordpress.org for the `wp-redirects` slug.

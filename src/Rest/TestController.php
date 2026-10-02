@@ -69,6 +69,11 @@ final class TestController extends BaseController {
 			return new \WP_Error( 'adv_redirects_invalid_path', __( 'That path is not valid.', 'wp-redirects' ), [ 'status' => 400 ] );
 		}
 
+		// The redirector never handles these, so the live site would not redirect them either.
+		if ( Site::is_unhandled_request( $normalized ) ) {
+			return rest_ensure_response( self::result( [ 'reason' => 'reserved' ] ) );
+		}
+
 		$ruleset = $this->cache->get();
 		$match   = ( new Matcher( $ruleset ) )->match( $normalized );
 		if ( null === $match ) {

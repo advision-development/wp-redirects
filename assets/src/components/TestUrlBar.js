@@ -57,11 +57,17 @@ function MatchedRule( { result, rule } ) {
 
 function TestResult( { result, rules } ) {
 	if ( ! result.matched ) {
+		const messages = {
+			external: __( 'That URL is on another site.', 'wp-redirects' ),
+			reserved: __(
+				'Not redirected: this path is used by WordPress itself.',
+				'wp-redirects'
+			),
+		};
 		return (
 			<span>
-				{ result.reason === 'external'
-					? __( 'That URL is on another site.', 'wp-redirects' )
-					: __( 'No redirect matches this URL.', 'wp-redirects' ) }
+				{ messages[ result.reason ] ||
+					__( 'No redirect matches this URL.', 'wp-redirects' ) }
 			</span>
 		);
 	}

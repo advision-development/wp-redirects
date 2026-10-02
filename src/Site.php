@@ -95,6 +95,19 @@ final class Site {
 		return $prefixes;
 	}
 
+	/**
+	 * Whether the redirector never handles this request: a reserved path, or a plain-permalink REST route.
+	 *
+	 * @param array{path:string,key:string,query:string} $request Normalized request from PathNormalizer.
+	 */
+	public static function is_unhandled_request( array $request ): bool {
+		parse_str( $request['query'], $query_args );
+		if ( isset( $query_args['rest_route'] ) && '' !== $query_args['rest_route'] ) {
+			return true;
+		}
+		return self::is_reserved_path( $request['path'] );
+	}
+
 	public static function is_reserved_path( string $path ): bool {
 		$key = PathNormalizer::key( $path );
 		foreach ( self::reserved_prefixes() as $prefix ) {

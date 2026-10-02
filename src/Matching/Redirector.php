@@ -90,14 +90,9 @@ final class Redirector {
 			return null;
 		}
 
-		// Plain-permalink REST requests (REST_REQUEST is not defined yet at init priority 1).
-		parse_str( $request['query'], $query_args );
-		if ( isset( $query_args['rest_route'] ) && '' !== $query_args['rest_route'] ) {
-			return null;
-		}
-
-		// Check the original path too, so a filter cannot map a reserved path to a non-reserved one.
-		if ( Site::is_reserved_path( $request['path'] ) ) {
+		// Plain-permalink REST requests (REST_REQUEST is not defined yet at init priority 1) and reserved paths.
+		// Checked before the path filter, so a filter cannot map a reserved path to a non-reserved one.
+		if ( Site::is_unhandled_request( $request ) ) {
 			return null;
 		}
 
