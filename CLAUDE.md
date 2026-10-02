@@ -48,6 +48,19 @@ npm run lint:js && npm run test:js
 npm run test:e2e              # Playwright against wp-env tests site
 ```
 
+## Testing notes
+
+- Integration tests run inside wp-env (`npm run env:start` first). The REST base class `tests/integration/support/RestTestCase.php` uses the plugin's own route registration.
+- Hit counting buffers in the object cache only when `wp_using_ext_object_cache()` is true; tests toggle it.
+- e2e relies on these accessible names: Source, Target, Test a URL, Add redirect, Test. Keep them stable or update `tests/e2e/redirects.spec.js`.
+- Integration tests and e2e share the wp-env tests database (the integration bootstrap overrides home/siteurl to `http://example.org`). If integration tests ran in the same env, run `npx wp-env clean tests && npm run env:start` before `npm run test:e2e`. CI runs them in separate jobs, each with a fresh env.
+- Jest is configured in `jest.config.cjs` (with `eslint.config.cjs` for linting), because `@wordpress/scripts` v36 no longer bundles Jest. `npm run test:js` runs plain `jest`.
+- Never run `wp-scripts format` on the whole repo. Use `npm run format`, which is scoped to `assets/src`, `tests/js` and `tests/e2e`.
+
+## Design
+
+- Admin UI conventions live in the files written by `/impeccable init` (see Task 20 of the plan). Re-run Impeccable passes for UI changes.
+
 ## Releases
 
 Tag `vX.Y.Z` on `main` after bumping the version in `wp-redirects.php` (header + `ADV_REDIRECTS_VERSION`) and `readme.txt` (`Stable tag`). CI builds assets, runs `composer install --no-dev`, zips `wp-redirects/` as `wp-redirects-X.Y.Z.zip`, and attaches it to a GitHub Release. Sites self-update from that asset via plugin-update-checker.

@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version numbers match the tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -qE "^ \* Version:[[:space:]]+${VERSION}$" wp-redirects.php || { echo "Plugin header Version does not match ${VERSION}"; exit 1; }
+          grep -qF "define( 'ADV_REDIRECTS_VERSION', '${VERSION}' );" wp-redirects.php || { echo "ADV_REDIRECTS_VERSION does not match ${VERSION}"; exit 1; }
+          grep -qE "^Stable tag: ${VERSION}$" readme.txt || { echo "readme.txt Stable tag does not match ${VERSION}"; exit 1; }
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          tools: composer:v2
+          coverage: none
+
+      - name: Unit tests
+        run: |
+          composer install --no-interaction --prefer-dist
+          composer test:unit
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Install runtime dependencies only
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+      - name: Package
+        run: |
+          mkdir -p dist/wp-redirects
+          rsync -a --exclude-from=.distignore ./ dist/wp-redirects/
+          test -f dist/wp-redirects/build/index.js
+          test -f dist/wp-redirects/build/index.asset.php
+          test -f dist/wp-redirects/vendor/autoload.php
+          test ! -d dist/wp-redirects/node_modules
+          test ! -d dist/wp-redirects/tests
+          cd dist
+          zip -rq "wp-redirects-${VERSION}.zip" wp-redirects
+          sha256sum "wp-redirects-${VERSION}.zip" > "wp-redirects-${VERSION}.zip.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/wp-redirects-${VERSION}.zip" \
+            "dist/wp-redirects-${VERSION}.zip.sha256" \
+            --title "WP Redirects ${VERSION}" \
+            --generate-notes \
+            --verify-tag
