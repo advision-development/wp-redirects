@@ -84,6 +84,68 @@ test.describe( 'Redirects admin', () => {
 		).toBeVisible();
 	} );
 
+	test( 'pages a long rules table and shows a matched rule on its page', async ( {
+		admin,
+		page,
+		requestUtils,
+	} ) => {
+		for ( let i = 1; i <= 30; i++ ) {
+			await requestUtils.rest( {
+				path: '/adv-redirects/v1/redirects',
+				method: 'POST',
+				data: {
+					type: 'exact',
+					source: `/e2e-page-${ String( i ).padStart( 2, '0' ) }`,
+					target: '/e2e-dest',
+					status_code: 301,
+				},
+			} );
+		}
+
+		await admin.visitAdminPage( 'admin.php', 'page=adv-redirects' );
+		// A size picked in an earlier run would otherwise carry over.
+		await page.evaluate( () =>
+			window.localStorage.removeItem( 'adv_redirects_page_size' )
+		);
+		await page.reload();
+
+		const rows = page.locator( '.adv-redirects-table tbody tr' );
+		await expect( page.getByText( '1–25 of 30' ) ).toBeVisible();
+		await expect( rows ).toHaveCount( 25 );
+
+		await page.getByRole( 'button', { name: 'Next page' } ).click();
+		await expect( page.getByText( '26–30 of 30' ) ).toBeVisible();
+		await expect( rows ).toHaveCount( 5 );
+		await expect(
+			page.getByRole( 'button', { name: 'Next page' } )
+		).toBeDisabled();
+		await expect(
+			page.getByRole( 'button', { name: 'Previous page' } )
+		).toBeFocused();
+
+		await page
+			.getByLabel( 'Rows per page' )
+			.selectOption( { label: 'All' } );
+		await expect(
+			page.getByText( '30 redirects', { exact: true } )
+		).toBeVisible();
+		await expect( rows ).toHaveCount( 30 );
+
+		// Back to 25: page 1 again, so the matched rule below is off-screen.
+		await page
+			.getByLabel( 'Rows per page' )
+			.selectOption( { label: '25' } );
+		await expect( page.getByText( '1–25 of 30' ) ).toBeVisible();
+
+		await page.getByLabel( 'Test a URL' ).fill( '/e2e-page-30' );
+		await page.getByRole( 'button', { name: 'Test', exact: true } ).click();
+		await page.getByRole( 'button', { name: 'Show rule' } ).click();
+		await expect( page.getByText( '26–30 of 30' ) ).toBeVisible();
+		await expect(
+			page.getByRole( 'button', { name: 'Edit /e2e-page-30' } )
+		).toBeFocused();
+	} );
+
 	test( 'a 410 rule returns 410 Gone', async ( {
 		requestUtils,
 		request,

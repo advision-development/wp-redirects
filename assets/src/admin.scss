@@ -289,6 +289,25 @@
 	}
 }
 
+.adv-redirects-pager {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	justify-content: flex-end;
+	margin-top: 12px;
+
+	&__range {
+		color: var(--adv-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	&__nav {
+		display: flex;
+		gap: 6px;
+	}
+}
+
 .adv-redirects-sort {
 	background: none;
 	border: 0;

@@ -9,6 +9,12 @@ import { __, _n, sprintf } from '@wordpress/i18n';
 import { errorMessage, STATUS_OPTIONS } from '../constants';
 import { notifySaved } from '../utils/notifySaved';
 import {
+	pageOfIndex,
+	paginate,
+	readPageSize,
+	writePageSize,
+} from '../utils/paging';
+import {
 	DEFAULT_FILTERS,
 	filterRules,
 	isFiltered,
@@ -19,6 +25,10 @@ import {
 import ConfirmModal from './ConfirmModal';
 import RuleEditRow from './RuleEditRow';
 import RuleRow from './RuleRow';
+import RulesPager from './RulesPager';
+
+// Smallest page size: a pager is pointless at or below it.
+const MIN_PAGE_ROWS = 25;
 
 // Last row gone: the table may unmount, so fall back to the add form.
 function focusQuickAdd() {
@@ -68,6 +78,9 @@ export default function RulesTable( {
 	const isRegex = mode === 'regex';
 	const [ filters, setFilters ] = useState( DEFAULT_FILTERS );
 	const [ sort, setSort ] = useState( { orderby: 'source', order: 'asc' } );
+	// 0-based; clamped to the real range at render by paginate().
+	const [ page, setPage ] = useState( 0 );
+	const [ pageSize, setPageSize ] = useState( readPageSize );
 	const [ selected, setSelected ] = useState( [] );
 	const [ editingId, setEditingId ] = useState( null );
 	const [ confirmDelete, setConfirmDelete ] = useState( false );
@@ -83,6 +96,25 @@ export default function RulesTable( {
 		}
 	}, [ returnFocusId, editingId ] );
 
+	// Set when a move carried a rule onto another page, so focus can follow it.
+	const moveFocus = useRef( null );
+	useEffect( () => {
+		const target = moveFocus.current;
+		moveFocus.current = null;
+		const buttons = target
+			? document.querySelectorAll(
+					`#adv-redirects-rule-${ target.id } .adv-redirects-order button`
+				)
+			: [];
+		if ( buttons.length === 2 ) {
+			const [ up, down ] = buttons;
+			const [ first, second ] = target.forward
+				? [ down, up ]
+				: [ up, down ];
+			( first.disabled ? second : first ).focus();
+		}
+	}, [ rules, page ] );
+
 	const closeEdit = ( id ) => {
 		setEditingId( null );
 		setReturnFocusId( id );
@@ -94,26 +126,53 @@ export default function RulesTable( {
 		const list = filterRules( rules, filters );
 		return isRegex ? list : sortRules( list, sort );
 	}, [ rules, filters, sort, isRegex ] );
-	const visibleIds = visible.map( ( rule ) => rule.id );
-	// Only rows that are both ticked and currently visible take part in bulk
-	// actions, so filtering never leaves hidden rows selected.
-	const activeSelection = visibleSelection( selected, visibleIds );
+	const pageInfo = paginate( visible, page, pageSize );
+	const pageRules = pageInfo.items;
+	const pageIds = pageRules.map( ( rule ) => rule.id );
+	// Only rows that are both ticked and on the current page take part in bulk
+	// actions, so filtering or paging never leaves hidden rows selected.
+	const activeSelection = visibleSelection( selected, pageIds );
 	const allSelected =
-		visibleIds.length > 0 && activeSelection.length === visibleIds.length;
+		pageIds.length > 0 && activeSelection.length === pageIds.length;
+	const showPager = visible.length > MIN_PAGE_ROWS;
+	const pageIdsKey = pageIds.join( ',' );
 
 	useEffect( () => {
 		setSelected( ( current ) => {
 			const next = visibleSelection(
 				current,
-				visible.map( ( rule ) => rule.id )
+				pageIdsKey ? pageIdsKey.split( ',' ).map( Number ) : []
 			);
 			return next.length === current.length ? current : next;
 		} );
-	}, [ visible ] );
+	}, [ pageIdsKey ] );
+
+	// A rule picked by the Test URL tool may be on another page: show that page
+	// so "Show rule" finds its row. Only reacts to a new match, never to paging.
+	const latest = useRef( {} );
+	latest.current = { visible, pageSize };
+	useEffect( () => {
+		if ( highlightId === null || highlightId === undefined ) {
+			return;
+		}
+		const { visible: list, pageSize: size } = latest.current;
+		const index = list.findIndex( ( rule ) => rule.id === highlightId );
+		if ( index !== -1 ) {
+			setPage( pageOfIndex( index, size ) );
+		}
+	}, [ highlightId ] );
 
 	const colSpan = isRegex ? 9 : 8;
+	const changeFilters = ( next ) => {
+		setFilters( next );
+		setPage( 0 );
+	};
+	const changeSort = ( next ) => {
+		setSort( next );
+		setPage( 0 );
+	};
 	const setFilter = ( key ) => ( value ) =>
-		setFilters( ( current ) => ( { ...current, [ key ]: value } ) );
+		changeFilters( { ...filters, [ key ]: value } );
 	const reportError = ( error ) =>
 		notify( { status: 'error', message: errorMessage( error ) } );
 
@@ -165,6 +224,11 @@ export default function RulesTable( {
 	const move = ( from, to ) => {
 		if ( to < 0 || to >= rules.length ) {
 			return;
+		}
+		// Follow the moved rule to its new page and put focus back on it.
+		if ( to < pageInfo.start || to >= pageInfo.end ) {
+			setPage( pageOfIndex( to, pageSize ) );
+			moveFocus.current = { id: rules[ from ].id, forward: to > from };
 		}
 		onReorder(
 			moveItem(
@@ -347,7 +411,9 @@ export default function RulesTable( {
 							{ ' ' }
 							<Button
 								variant="link"
-								onClick={ () => setFilters( DEFAULT_FILTERS ) }
+								onClick={ () =>
+									changeFilters( DEFAULT_FILTERS )
+								}
 							>
 								{ __( 'Clear filters', 'wp-redirects' ) }
 							</Button>
@@ -364,7 +430,7 @@ export default function RulesTable( {
 									checked={ allSelected }
 									onChange={ () =>
 										setSelected(
-											allSelected ? [] : visibleIds
+											allSelected ? [] : pageIds
 										)
 									}
 									aria-label={ __(
@@ -385,35 +451,35 @@ export default function RulesTable( {
 								label={ __( 'Source', 'wp-redirects' ) }
 								column="source"
 								sort={ sort }
-								onSort={ setSort }
+								onSort={ changeSort }
 								sortable={ ! isRegex }
 							/>
 							<SortableHeader
 								label={ __( 'Target', 'wp-redirects' ) }
 								column="target"
 								sort={ sort }
-								onSort={ setSort }
+								onSort={ changeSort }
 								sortable={ ! isRegex }
 							/>
 							<SortableHeader
 								label={ __( 'Status', 'wp-redirects' ) }
 								column="status_code"
 								sort={ sort }
-								onSort={ setSort }
+								onSort={ changeSort }
 								sortable={ ! isRegex }
 							/>
 							<SortableHeader
 								label={ __( 'Hits', 'wp-redirects' ) }
 								column="hits"
 								sort={ sort }
-								onSort={ setSort }
+								onSort={ changeSort }
 								sortable={ ! isRegex }
 							/>
 							<SortableHeader
 								label={ __( 'Last hit', 'wp-redirects' ) }
 								column="last_hit_at"
 								sort={ sort }
-								onSort={ setSort }
+								onSort={ changeSort }
 								sortable={ ! isRegex }
 							/>
 							<th scope="col">
@@ -424,8 +490,10 @@ export default function RulesTable( {
 						</tr>
 					</thead>
 					<tbody>
-						{ visible.map( ( rule, index ) =>
-							editingId === rule.id ? (
+						{ pageRules.map( ( rule, offset ) => {
+							// Position in the whole list, not on this page.
+							const index = pageInfo.start + offset;
+							return editingId === rule.id ? (
 								<RuleEditRow
 									key={ rule.id }
 									rule={ rule }
@@ -489,10 +557,28 @@ export default function RulesTable( {
 											.catch( reportError )
 									}
 								/>
-							)
-						) }
+							);
+						} ) }
 					</tbody>
 				</table>
+			) }
+
+			{ showPager && (
+				<RulesPager
+					info={ pageInfo }
+					pageSize={ pageSize }
+					label={
+						isRegex
+							? __( 'Regex redirects pages', 'wp-redirects' )
+							: __( 'Exact redirects pages', 'wp-redirects' )
+					}
+					onPage={ setPage }
+					onPageSize={ ( size ) => {
+						setPageSize( size );
+						writePageSize( size );
+						setPage( 0 );
+					} }
+				/>
 			) }
 
 			{ isRegex && filtered && (
