@@ -144,4 +144,144 @@ final class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( $before + 1, did_action( 'adv_redirects_import_completed' ) );
 		$this->assertSame( 'Changed by filter', $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/fx-old-page/' ) )->note );
 	}
+
+	private function entry( int $id, string $url, string $target, bool $enabled = true ): array {
+		return [
+			'id'          => $id,
+			'url'         => $url,
+			'match_url'   => $url,
+			'match_data'  => [ 'source' => [ 'flag_case' => false, 'flag_query' => 'exact', 'flag_regex' => false, 'flag_trailing' => false ] ],
+			'action_code' => 301,
+			'action_type' => 'url',
+			'action_data' => [ 'url' => $target ],
+			'match_type'  => 'url',
+			'title'       => '',
+			'hits'        => 0,
+			'regex'       => false,
+			'group_id'    => 1,
+			'position'    => 0,
+			'last_access' => '',
+			'enabled'     => $enabled,
+		];
+	}
+
+	public function test_later_own_host_absolute_source_supersedes_an_earlier_path_entry(): void {
+		$redirects = [
+			$this->entry( 1, '/probe-a/', '/target-one/' ),
+			$this->entry( 2, 'http://example.org/probe-a', '/target-two/' ),
+		];
+
+		$preview = $this->importer->preview( $redirects, $this->export['groups'] );
+		$this->assertSame( 1, $preview['counts']['new'] );
+		$this->assertSame( 1, $preview['counts']['superseded'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $preview['entries'], 1 )['status'] );
+		$this->assertSame( 'new', $this->by_source_id( $preview['entries'], 2 )['status'] );
+
+		$result = $this->importer->import( $redirects, $this->export['groups'] );
+		$this->assertSame( [ 'total' => 2, 'created' => 1, 'updated' => 0, 'skipped' => 1 ], $result['counts'] );
+		$this->assertSame( 'superseded', $this->by_source_id( $result['entries'], 1 )['error']['code'] );
+		$this->assertSame( '/target-two/', $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/probe-a' ) )->target );
+	}
+
+	public function test_own_host_absolute_source_overwrites_the_existing_path_rule(): void {
+		$existing  = $this->repo->insert( [ 'type' => 'exact', 'source' => '/probe-b', 'target' => '/old-target', 'status_code' => 302 ] );
+		$redirects = [ $this->entry( 1, 'https://example.org/probe-b/', '/new-target/' ) ];
+
+		$entry = $this->importer->preview( $redirects, $this->export['groups'] )['entries'][0];
+		$this->assertSame( 'overwrite', $entry['status'] );
+		$this->assertSame( $existing->id, $entry['existing_id'] );
+
+		$result = $this->importer->import( $redirects, $this->export['groups'] );
+		$this->assertSame( [ 'total' => 1, 'created' => 0, 'updated' => 1, 'skipped' => 0 ], $result['counts'] );
+		$this->assertCount( 1, $this->repo->all() );
+		$this->assertSame( '/new-target/', $this->repo->find( $existing->id )->target );
+	}
+
+	public function test_preview_does_not_leave_the_read_cache_open(): void {
+		$this->importer->preview( [ $this->entry( 1, '/rc-open/', '/x/' ) ], $this->export['groups'] );
+		$this->repo->insert( [ 'type' => 'exact', 'source' => '/after-preview', 'target' => '/x', 'status_code' => 301 ] );
+		$this->assertCount( 1, $this->repo->all() );
+	}
+
+	public function test_disabled_overwrite_drops_the_old_row_from_the_loop_walk(): void {
+		$this->repo->insert( [ 'type' => 'exact', 'source' => '/probe-b', 'target' => '/probe-c', 'status_code' => 301 ] );
+		$redirects = [
+			$this->entry( 1, '/probe-b/', '/elsewhere/', false ),
+			$this->entry( 2, '/probe-c/', '/probe-b/' ),
+		];
+
+		$entries = $this->importer->preview( $redirects, $this->export['groups'] )['entries'];
+		$this->assertSame( 'overwrite', $this->by_source_id( $entries, 1 )['status'] );
+		$this->assertSame( 'new', $this->by_source_id( $entries, 2 )['status'], 'The disabled overwrite removes /probe-b from the walk.' );
+
+		$result = $this->importer->import( $redirects, $this->export['groups'] );
+		$this->assertSame( [ 'total' => 2, 'created' => 1, 'updated' => 1, 'skipped' => 0 ], $result['counts'] );
+	}
+
+	public function test_origin_is_normalised(): void {
+		add_filter(
+			'adv_redirects_import_rule',
+			static function ( $rule ) {
+				$rule['origin'] = 'bogus';
+				return $rule;
+			}
+		);
+		$redirects = [ $this->entry( 1, '/origin-test/', '/x/' ) ];
+
+		$this->assertSame( 'manual', $this->importer->preview( $redirects, $this->export['groups'] )['entries'][0]['rule']['origin'] );
+		$this->importer->import( $redirects, $this->export['groups'] );
+		$this->assertSame( 'manual', $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/origin-test/' ) )->origin );
+	}
+
+	public function test_non_array_filter_result_skips_as_filtered(): void {
+		add_filter( 'adv_redirects_import_rule', static fn() => 'nope' );
+		$redirects = [ $this->entry( 1, '/f-test/', '/x/' ) ];
+
+		$entry = $this->importer->preview( $redirects, $this->export['groups'] )['entries'][0];
+		$this->assertSame( 'skipped', $entry['status'] );
+		$this->assertSame( 'filtered', $entry['error']['code'] );
+		$this->assertSame( 0, $this->importer->import( $redirects, $this->export['groups'] )['counts']['created'] );
+	}
+
+	public function test_filter_returning_unusable_fields_skips_as_invalid_entry(): void {
+		$bad = [
+			static function ( $rule ) {
+				$rule['source'] = [ 'x' ];
+				return $rule;
+			},
+			static function ( $rule ) {
+				$rule['source'] = '';
+				return $rule;
+			},
+			static function ( $rule ) {
+				$rule['target'] = [ 'x' ];
+				return $rule;
+			},
+		];
+		$redirects = [ $this->entry( 1, '/f-bad/', '/x/' ) ];
+
+		foreach ( $bad as $callback ) {
+			add_filter( 'adv_redirects_import_rule', $callback );
+			$entry = $this->importer->preview( $redirects, $this->export['groups'] )['entries'][0];
+			$this->assertSame( 'skipped', $entry['status'] );
+			$this->assertSame( 'invalid_entry', $entry['error']['code'] );
+			$this->assertSame( 'invalid_entry', $this->importer->import( $redirects, $this->export['groups'] )['entries'][0]['error']['code'] );
+			remove_filter( 'adv_redirects_import_rule', $callback );
+		}
+		$this->assertSame( [], $this->repo->all() );
+	}
+
+	public function test_filter_may_null_the_target(): void {
+		add_filter(
+			'adv_redirects_import_rule',
+			static function ( $rule ) {
+				$rule['target']      = null;
+				$rule['status_code'] = 410;
+				return $rule;
+			}
+		);
+		$entry = $this->importer->preview( [ $this->entry( 1, '/f-gone/', '/x/' ) ], $this->export['groups'] )['entries'][0];
+		$this->assertSame( 'new', $entry['status'] );
+		$this->assertNull( $entry['rule']['target'] );
+	}
 }

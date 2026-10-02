@@ -213,4 +213,58 @@ final class RepositoryTest extends WP_UnitTestCase {
 		$this->assertSame( $rule->id, $this->repo->regex_rule_by_source( '^/a/(.*)$' )->id );
 		$this->assertNull( $this->repo->regex_rule_by_source( '^/A/(.*)$' ) );
 	}
+
+	public function test_read_cache_scope_serves_a_snapshot_and_every_write_clears_it(): void {
+		$first = $this->repo->insert( [ 'type' => 'exact', 'source' => '/rc-a', 'target' => '/x', 'status_code' => 301 ] );
+
+		$this->repo->begin_read_cache();
+		try {
+			$this->assertCount( 1, $this->repo->all() );
+			$this->assertSame( $first->id, $this->repo->exact_rule_by_key( '/rc-a' )->id );
+			$this->assertNull( $this->repo->exact_rule_by_key( '/rc-a', $first->id ) );
+
+			// A write that bypasses the repository is not seen: proof the snapshot is really served.
+			global $wpdb;
+			$wpdb->query( $wpdb->prepare( 'UPDATE %i SET source = %s WHERE id = %d', \Advision\Redirects\Schema::redirects_table(), '/rc-sneaky', $first->id ) );
+			$this->assertSame( '/rc-a', $this->repo->all()[0]->source );
+
+			$second = $this->repo->insert( [ 'type' => 'exact', 'source' => '/rc-b', 'target' => '/y', 'status_code' => 301 ] );
+			$this->assertCount( 2, $this->repo->all(), 'insert clears the snapshot.' );
+			$this->assertSame( $second->id, $this->repo->exact_rule_by_key( '/rc-b' )->id );
+			$this->assertCount( 2, $this->repo->enabled_rows() );
+
+			$this->repo->update( $second->id, [ 'target' => '/z' ] );
+			$this->assertSame( '/z', $this->repo->exact_rule_by_key( '/rc-b' )->target, 'update clears the snapshot.' );
+
+			$this->repo->update( $second->id, [ 'enabled' => false ] );
+			$this->assertCount( 1, $this->repo->enabled_rows() );
+
+			$regex = $this->repo->insert( [ 'type' => 'regex', 'source' => '^/rc/(.*)$', 'target' => '/y/$1', 'status_code' => 301 ] );
+			$this->assertSame( $regex->id, $this->repo->regex_rule_by_source( '^/rc/(.*)$' )->id );
+
+			$this->repo->delete( $second->id );
+			$this->assertNull( $this->repo->exact_rule_by_key( '/rc-b' ), 'delete clears the snapshot.' );
+
+			$this->repo->add_hits( $first->id, 3, '2026-10-01 00:00:00' );
+			$this->assertSame( 3, $this->repo->all()[0]->hits, 'add_hits clears the snapshot.' );
+
+			$this->repo->disable_by_source_key( '/rc-sneaky' );
+			$this->assertCount( 1, $this->repo->enabled_rows(), 'disable_by_source_key clears the snapshot.' );
+		} finally {
+			$this->repo->end_read_cache();
+		}
+	}
+
+	public function test_reads_are_live_outside_the_read_cache_scope(): void {
+		$this->repo->insert( [ 'type' => 'exact', 'source' => '/live-a', 'target' => '/x', 'status_code' => 301 ] );
+		$this->assertCount( 1, $this->repo->all() );
+		$this->repo->insert( [ 'type' => 'exact', 'source' => '/live-b', 'target' => '/x', 'status_code' => 301 ] );
+		$this->assertCount( 2, $this->repo->all() );
+
+		$this->repo->begin_read_cache();
+		$this->repo->all();
+		$this->repo->end_read_cache();
+		$this->repo->insert( [ 'type' => 'exact', 'source' => '/live-c', 'target' => '/x', 'status_code' => 301 ] );
+		$this->assertCount( 3, $this->repo->all() );
+	}
 }

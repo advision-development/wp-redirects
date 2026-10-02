@@ -28,9 +28,69 @@ final class Repository {
 	];
 
 	/**
+	 * In-memory snapshot, only while a read-cache scope is open. Every write clears it.
+	 *
+	 * @var array|null
+	 */
+	private ?array $snapshot = null;
+
+	private bool $read_cache = false;
+
+	/**
+	 * Opens an opt-in read-cache scope for bulk readers (the import preview). While open,
+	 * all(), enabled_rows(), exact_rule_by_key() and regex_rule_by_source() are served from
+	 * one in-memory snapshot. Any write through this repository clears the snapshot.
+	 */
+	public function begin_read_cache(): void {
+		$this->read_cache = true;
+		$this->snapshot   = null;
+	}
+
+	public function end_read_cache(): void {
+		$this->read_cache = false;
+		$this->snapshot   = null;
+	}
+
+	private function forget_snapshot(): void {
+		$this->snapshot = null;
+	}
+
+	/**
+	 * @return array{all:Rule[],enabled:array,exact:array<string,Rule[]>,regex:array<string,Rule>}
+	 */
+	private function snapshot(): array {
+		if ( null === $this->snapshot ) {
+			$all   = $this->query_all();
+			$exact = [];
+			$regex = [];
+			foreach ( $all as $rule ) {
+				if ( 'exact' === $rule->type ) {
+					$exact[ PathNormalizer::source_key( $rule->source ) ][] = $rule;
+				} elseif ( ! isset( $regex[ $rule->source ] ) ) {
+					$regex[ $rule->source ] = $rule;
+				}
+			}
+			$this->snapshot = [
+				'all'     => $all,
+				'enabled' => $this->query_enabled_rows(),
+				'exact'   => $exact,
+				'regex'   => $regex,
+			];
+		}
+		return $this->snapshot;
+	}
+
+	/**
 	 * @return Rule[]
 	 */
 	public function all(): array {
+		return $this->read_cache ? $this->snapshot()['all'] : $this->query_all();
+	}
+
+	/**
+	 * @return Rule[]
+	 */
+	private function query_all(): array {
 		global $wpdb;
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( 'SELECT * FROM %i ORDER BY type ASC, position ASC, id ASC', Schema::redirects_table() ),
@@ -49,6 +109,10 @@ final class Repository {
 	}
 
 	public function enabled_rows(): array {
+		return $this->read_cache ? $this->snapshot()['enabled'] : $this->query_enabled_rows();
+	}
+
+	private function query_enabled_rows(): array {
 		global $wpdb;
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
@@ -69,6 +133,14 @@ final class Repository {
 	}
 
 	public function exact_rule_by_key( string $key, int $exclude_id = 0 ): ?Rule {
+		if ( $this->read_cache ) {
+			foreach ( $this->snapshot()['exact'][ $key ] ?? [] as $rule ) {
+				if ( $rule->id !== $exclude_id ) {
+					return $rule;
+				}
+			}
+			return null;
+		}
 		foreach ( $this->all() as $rule ) {
 			if ( 'exact' === $rule->type && $rule->id !== $exclude_id && PathNormalizer::source_key( $rule->source ) === $key ) {
 				return $rule;
@@ -78,6 +150,9 @@ final class Repository {
 	}
 
 	public function regex_rule_by_source( string $source ): ?Rule {
+		if ( $this->read_cache ) {
+			return $this->snapshot()['regex'][ $source ] ?? null;
+		}
 		foreach ( $this->all() as $rule ) {
 			if ( 'regex' === $rule->type && $rule->source === $source ) {
 				return $rule;
@@ -91,6 +166,7 @@ final class Repository {
 	 */
 	public function insert( array $data ): ?Rule {
 		global $wpdb;
+		$this->forget_snapshot();
 
 		$now  = current_time( 'mysql', true );
 		$type = 'regex' === ( $data['type'] ?? '' ) ? 'regex' : 'exact';
@@ -117,6 +193,7 @@ final class Repository {
 		}
 
 		$rule = $this->find( (int) $wpdb->insert_id );
+		$this->forget_snapshot();
 		RuleCache::flush();
 		if ( null !== $rule ) {
 			/**
@@ -134,6 +211,7 @@ final class Repository {
 	 */
 	public function update( int $id, array $data ): ?Rule {
 		global $wpdb;
+		$this->forget_snapshot();
 
 		$old = $this->find( $id );
 		if ( null === $old ) {
@@ -172,6 +250,7 @@ final class Repository {
 		}
 
 		$rule = $this->find( $id );
+		$this->forget_snapshot();
 		RuleCache::flush();
 		if ( null === $rule ) {
 			return null;
@@ -188,6 +267,7 @@ final class Repository {
 
 	public function delete( int $id ): bool {
 		global $wpdb;
+		$this->forget_snapshot();
 
 		$old = $this->find( $id );
 		if ( null === $old ) {
@@ -197,6 +277,7 @@ final class Repository {
 			return false;
 		}
 
+		$this->forget_snapshot();
 		RuleCache::flush();
 		/**
 		 * Fires after a redirect is deleted.
@@ -214,6 +295,7 @@ final class Repository {
 	 */
 	public function reorder( array $ids ): void {
 		global $wpdb;
+		$this->forget_snapshot();
 
 		$regex_ids = [];
 		foreach ( $this->all() as $rule ) {
@@ -229,6 +311,7 @@ final class Repository {
 		foreach ( $order as $id ) {
 			$wpdb->update( Schema::redirects_table(), [ 'position' => $position++ ], [ 'id' => $id ], [ '%d' ], [ '%d' ] );
 		}
+		$this->forget_snapshot();
 		RuleCache::flush();
 	}
 
@@ -241,6 +324,7 @@ final class Repository {
 		$to_key   = PathNormalizer::source_key( $to_path );
 		$count    = 0;
 
+		$this->forget_snapshot();
 		foreach ( $this->all() as $rule ) {
 			if ( null === $rule->target ) {
 				continue;
@@ -261,6 +345,7 @@ final class Repository {
 
 	public function disable_by_source_key( string $key ): int {
 		$count = 0;
+		$this->forget_snapshot();
 		foreach ( $this->all() as $rule ) {
 			if ( 'exact' === $rule->type && $rule->enabled && PathNormalizer::source_key( $rule->source ) === $key ) {
 				$this->update( $rule->id, [ 'enabled' => false ] );
@@ -272,6 +357,7 @@ final class Repository {
 
 	public function add_hits( int $id, int $count, string $last_hit_gmt ): void {
 		global $wpdb;
+		$this->forget_snapshot();
 		$wpdb->query(
 			$wpdb->prepare(
 				'UPDATE %i SET hits = hits + %d, last_hit_at = %s WHERE id = %d',

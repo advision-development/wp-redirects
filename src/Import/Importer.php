@@ -12,6 +12,7 @@ use Advision\Redirects\Matching\PathNormalizer;
 use Advision\Redirects\Redirects\Repository;
 use Advision\Redirects\Redirects\Rule;
 use Advision\Redirects\Redirects\Validator;
+use Advision\Redirects\Site;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -35,9 +36,19 @@ final class Importer {
 	 * @param array $groups    Raw export groups.
 	 */
 	public function preview( array $redirects, array $groups ): array {
+		$this->repository->begin_read_cache();
+		try {
+			return $this->run_preview( $redirects, $groups );
+		} finally {
+			$this->repository->end_read_cache();
+		}
+	}
+
+	private function run_preview( array $redirects, array $groups ): array {
 		$entries = [];
 		$pending = [];
 		$next_id = -1;
+		$lookup  = $this->existing_lookup();
 
 		foreach ( $this->plan( $redirects, $groups ) as $index => $item ) {
 			$entry = [
@@ -63,7 +74,7 @@ final class Importer {
 				continue;
 			}
 
-			$existing = $this->existing_for( $item['rule'] );
+			$existing = $this->existing_for( $item['rule'], $lookup );
 			$result   = $this->validator->validate( self::validator_input( $item['rule'] ), null !== $existing ? $existing->id : null, $pending );
 			if ( is_wp_error( $result ) ) {
 				$entry['status'] = 'skipped';
@@ -75,7 +86,7 @@ final class Importer {
 				continue;
 			}
 
-			$entry['rule']     = $result['data'] + [ 'origin' => $item['rule']['origin'] ];
+			$entry['rule']     = $result['data'] + [ 'origin' => self::origin( $item['rule'] ) ];
 			$entry['warnings'] = $result['warnings'];
 			if ( null !== $existing ) {
 				$entry['status']      = 'overwrite';
@@ -88,13 +99,16 @@ final class Importer {
 				];
 			}
 
-			if ( $result['data']['enabled'] ) {
+			// An overwrite always replaces the old row in the walk (a disabled one drops out of
+			// it). A new rule that is disabled can never matter, so it is left out.
+			if ( null !== $existing || $result['data']['enabled'] ) {
 				$pending[] = [
 					'id'          => null !== $existing ? $existing->id : $next_id--,
 					'type'        => $result['data']['type'],
 					'source'      => $result['data']['source'],
 					'target'      => $result['data']['target'],
 					'status_code' => $result['data']['status_code'],
+					'enabled'     => $result['data']['enabled'] ? 1 : 0,
 					'position'    => null !== $existing && 'regex' === $existing->type ? $existing->position : 1000000 + $index,
 				];
 			}
@@ -148,7 +162,7 @@ final class Importer {
 				continue;
 			}
 
-			$data = $result['data'] + [ 'origin' => $item['rule']['origin'] ];
+			$data = $result['data'] + [ 'origin' => self::origin( $item['rule'] ) ];
 			$rule = null !== $existing ? $this->repository->update( $existing->id, $data ) : $this->repository->insert( $data );
 			if ( null === $rule ) {
 				$entry['error'] = [
@@ -207,17 +221,23 @@ final class Importer {
 
 			if ( $mapped['ok'] ) {
 				/**
-				 * Filters a mapped import rule. Return false to skip it.
+				 * Filters a mapped import rule. Return false (or any non-array) to skip it.
 				 *
 				 * @param array|false $rule  { type, source, target, status_code, enabled, note, origin }.
 				 * @param array       $entry The raw Redirection export entry.
 				 */
 				$filtered = apply_filters( 'adv_redirects_import_rule', $mapped['rule'], is_array( $raw ) ? $raw : [] );
-				if ( false === $filtered ) {
+				if ( ! is_array( $filtered ) ) {
 					$item['rule']  = null;
 					$item['error'] = 'filtered';
-				} elseif ( is_array( $filtered ) ) {
-					$item['rule'] = array_merge( $mapped['rule'], array_intersect_key( $filtered, $mapped['rule'] ) );
+				} else {
+					$merged = array_merge( $mapped['rule'], array_intersect_key( $filtered, $mapped['rule'] ) );
+					if ( self::is_usable_rule( $merged ) ) {
+						$item['rule'] = $merged;
+					} else {
+						$item['rule']  = null;
+						$item['error'] = 'invalid_entry';
+					}
 				}
 			}
 
@@ -236,17 +256,81 @@ final class Importer {
 		return $planned;
 	}
 
-	private function existing_for( array $rule ): ?Rule {
-		if ( 'regex' === $rule['type'] ) {
-			return $this->repository->regex_rule_by_source( (string) $rule['source'] );
+	/**
+	 * Indexes the stored rules once (exact key => Rule, regex source => Rule), first match wins.
+	 *
+	 * @return array{exact:array<string,Rule>,regex:array<string,Rule>}
+	 */
+	private function existing_lookup(): array {
+		$lookup = [
+			'exact' => [],
+			'regex' => [],
+		];
+		foreach ( $this->repository->all() as $rule ) {
+			if ( 'exact' === $rule->type ) {
+				$key = PathNormalizer::source_key( $rule->source );
+				if ( ! isset( $lookup['exact'][ $key ] ) ) {
+					$lookup['exact'][ $key ] = $rule;
+				}
+			} elseif ( ! isset( $lookup['regex'][ $rule->source ] ) ) {
+				$lookup['regex'][ $rule->source ] = $rule;
+			}
 		}
-		return $this->repository->exact_rule_by_key( PathNormalizer::source_key( trim( (string) $rule['source'] ) ) );
+		return $lookup;
+	}
+
+	/**
+	 * @param array|null $lookup From existing_lookup(); null queries the repository.
+	 */
+	private function existing_for( array $rule, ?array $lookup = null ): ?Rule {
+		if ( 'regex' === $rule['type'] ) {
+			$source = (string) $rule['source'];
+			return null !== $lookup ? ( $lookup['regex'][ $source ] ?? null ) : $this->repository->regex_rule_by_source( $source );
+		}
+		$key = PathNormalizer::source_key( self::exact_path( (string) $rule['source'] ) );
+		return null !== $lookup ? ( $lookup['exact'][ $key ] ?? null ) : $this->repository->exact_rule_by_key( $key );
+	}
+
+	/**
+	 * The exact source as the Validator will store it: an own-host absolute URL becomes its path.
+	 */
+	private static function exact_path( string $source ): string {
+		$source = trim( $source );
+		if ( preg_match( '#^https?://#i', $source ) ) {
+			$path = Site::internal_path( $source );
+			if ( null !== $path ) {
+				return $path;
+			}
+		}
+		return $source;
 	}
 
 	private static function conflict_key( array $rule ): string {
 		return 'regex' === $rule['type']
 			? 'r:' . $rule['source']
-			: 'e:' . PathNormalizer::source_key( trim( (string) $rule['source'] ) );
+			: 'e:' . PathNormalizer::source_key( self::exact_path( (string) $rule['source'] ) );
+	}
+
+	private static function origin( array $rule ): string {
+		return 'auto' === ( $rule['origin'] ?? '' ) ? 'auto' : 'manual';
+	}
+
+	/**
+	 * Guards against filter results that would make the Validator cast arrays to strings.
+	 */
+	private static function is_usable_rule( array $rule ): bool {
+		if ( ! is_string( $rule['source'] ) || '' === $rule['source'] ) {
+			return false;
+		}
+		if ( null !== $rule['target'] && ! is_string( $rule['target'] ) ) {
+			return false;
+		}
+		foreach ( [ 'type', 'status_code', 'enabled', 'note', 'origin' ] as $field ) {
+			if ( null !== $rule[ $field ] && ! is_scalar( $rule[ $field ] ) ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static function validator_input( array $rule ): array {
