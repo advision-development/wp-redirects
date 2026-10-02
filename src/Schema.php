@@ -68,7 +68,7 @@ final class Schema {
 ) {$charset};"
 		);
 
-		update_option( self::VERSION_OPTION, self::VERSION, false );
+		update_option( self::VERSION_OPTION, self::VERSION );
 	}
 
 	public static function maybe_upgrade(): void {

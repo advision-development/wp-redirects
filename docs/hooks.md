@@ -46,6 +46,7 @@ $rule = adv_redirects_add( [
 ] );
 if ( is_wp_error( $rule ) ) {
 	error_log( $rule->get_error_message() );
+	return;
 }
 
 adv_redirects_delete( $rule['id'] );
