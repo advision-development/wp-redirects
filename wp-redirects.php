@@ -23,5 +23,9 @@ define( 'ADV_REDIRECTS_URL', plugin_dir_url( __FILE__ ) );
 
 require_once ADV_REDIRECTS_DIR . 'src/Autoloader.php';
 \Advision\Redirects\Autoloader::register( ADV_REDIRECTS_DIR . 'src' );
+require_once ADV_REDIRECTS_DIR . 'src/functions.php';
+
+register_activation_hook( __FILE__, [ \Advision\Redirects\Plugin::class, 'activate' ] );
+register_deactivation_hook( __FILE__, [ \Advision\Redirects\Plugin::class, 'deactivate' ] );
 
 \Advision\Redirects\Plugin::instance()->boot();
