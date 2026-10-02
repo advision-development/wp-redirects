@@ -54,4 +54,12 @@ export const api = {
 	getSettings: () => apiFetch( { path: `${ NS }/settings` } ),
 	saveSettings: ( data ) =>
 		apiFetch( { path: `${ NS }/settings`, method: 'PUT', data } ),
+	importPreview: ( payload ) =>
+		apiFetch( {
+			path: `${ NS }/import/preview`,
+			method: 'POST',
+			data: payload,
+		} ),
+	importBatch: ( payload ) =>
+		apiFetch( { path: `${ NS }/import`, method: 'POST', data: payload } ),
 };
