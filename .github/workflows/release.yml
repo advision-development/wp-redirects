@@ -12,13 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Verify version numbers match the tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          grep -qE "^ \* Version:[[:space:]]+${VERSION}$" wp-redirects.php || { echo "Plugin header Version does not match ${VERSION}"; exit 1; }
+          # Dots in the version are literal in the regex greps below.
+          VERSION_RE="$(printf '%s' "${VERSION}" | sed 's/\./\\./g')"
+          grep -qE "^ \* Version:[[:space:]]+${VERSION_RE}$" wp-redirects.php || { echo "Plugin header Version does not match ${VERSION}"; exit 1; }
           grep -qF "define( 'ADV_REDIRECTS_VERSION', '${VERSION}' );" wp-redirects.php || { echo "ADV_REDIRECTS_VERSION does not match ${VERSION}"; exit 1; }
-          grep -qE "^Stable tag: ${VERSION}$" readme.txt || { echo "readme.txt Stable tag does not match ${VERSION}"; exit 1; }
+          grep -qE "^Stable tag: ${VERSION_RE}$" readme.txt || { echo "readme.txt Stable tag does not match ${VERSION}"; exit 1; }
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
       - uses: shivammathur/setup-php@v2
@@ -59,9 +63,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Tags with a suffix (v1.0.0-rc1) are published as prereleases. The update checker only
+          # matches X.Y.Z zip assets, so sites are never offered a prerelease.
+          FLAGS=()
+          if [[ "${VERSION}" == *-* ]]; then
+            FLAGS+=(--prerelease)
+          fi
           gh release create "${GITHUB_REF_NAME}" \
             "dist/wp-redirects-${VERSION}.zip" \
             "dist/wp-redirects-${VERSION}.zip.sha256" \
             --title "WP Redirects ${VERSION}" \
             --generate-notes \
-            --verify-tag
+            --verify-tag \
+            "${FLAGS[@]}"

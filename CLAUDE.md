@@ -59,8 +59,10 @@ npm run test:e2e              # Playwright against wp-env tests site
 
 ## Design
 
-- Admin UI conventions live in the files written by `/impeccable init` (see Task 20 of the plan). Re-run Impeccable passes for UI changes.
+- Product context for design work is in `PRODUCT.md` (users, positioning, brand commitments). The latest Impeccable critique snapshot is in `.impeccable/critique/`. No `DESIGN.md` exists.
+- Constraints: the screen must look native to wp-admin (`@wordpress/components`, admin color scheme) and meet WCAG 2.2 AA (labels, error links through `utils/a11y.js`, focus management, keyboard use).
+- Re-run Impeccable passes for UI changes.
 
 ## Releases
 
-Tag `vX.Y.Z` on `main` after bumping the version in `wp-redirects.php` (header + `ADV_REDIRECTS_VERSION`) and `readme.txt` (`Stable tag`). CI builds assets, runs `composer install --no-dev`, zips `wp-redirects/` as `wp-redirects-X.Y.Z.zip`, and attaches it to a GitHub Release. Sites self-update from that asset via plugin-update-checker.
+Tag `vX.Y.Z` on `main` after bumping the version in `wp-redirects.php` (header + `ADV_REDIRECTS_VERSION`) and `readme.txt` (`Stable tag`). CI builds assets, runs `composer install --no-dev`, zips `wp-redirects/` as `wp-redirects-X.Y.Z.zip`, and attaches it to a GitHub Release. Sites self-update from that asset via plugin-update-checker. Tags with a suffix (`v1.0.0-rc1`) are published as GitHub prereleases and never offered to sites. The `Update URI` header in `wp-redirects.php` keeps WordPress core from also checking wordpress.org for the `wp-redirects` slug. Do not remove it.
