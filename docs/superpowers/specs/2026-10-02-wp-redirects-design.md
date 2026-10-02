@@ -472,6 +472,7 @@ All hooks are documented with docblocks in code and in `docs/hooks.md`.
 6. Bulk enable re-validates each rule. Rules that would create a loop are left disabled and returned in `skipped`.
 7. Final review fixes: the Test URL tool and the chain walk skip what the Redirector never handles (reserved paths and a non-empty `rest_route` query). The test endpoint answers `matched: false, reason: "reserved"` for them. Exact rules reject `$1`-`$9` in the target (`adv_redirects_invalid_target`), since only regex rules substitute captures. The plugin header carries `Update URI` so WordPress core never checks wordpress.org for the `wp-redirects` slug.
 8. Import from the Redirection plugin (JSON export) is added to scope; see §17.
+9. Rule attribution: `created_by`, `created_via` (`manual`|`import`|`slug`|`api`) and `updated_by` columns (schema v2), set server-side in `Repository`; REST adds `created_by_name`/`updated_by_name`; the rules table shows "By: <user> · <date>" plus a via label, and the last edit on hover and in the edit row.
 
 ## 17. Import from Redirection (added 2026-10-02)
 

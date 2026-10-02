@@ -1,6 +1,6 @@
 # WP Redirects: hooks reference
 
-All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time hooks have the shape `{ id, type, target, status }`. `Rule` objects (`Advision\Redirects\Redirects\Rule`) expose `id, type, source, target, status_code, position, enabled, origin, note, hits, last_hit_at, created_at, updated_at`.
+All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time hooks have the shape `{ id, type, target, status }`. `Rule` objects (`Advision\Redirects\Redirects\Rule`) expose `id, type, source, target, status_code, position, enabled, origin, created_by, created_via, updated_by, note, hits, last_hit_at, created_at, updated_at`.
 
 ## Filters
 

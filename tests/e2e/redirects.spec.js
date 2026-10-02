@@ -33,7 +33,13 @@ test.describe( 'Redirects admin', () => {
 		await page.getByRole( 'button', { name: 'Add redirect' } ).click();
 
 		await expect(
-			page.getByRole( 'cell', { name: '/e2e-old', exact: true } )
+			page.locator( 'td code', { hasText: /^\/e2e-old$/ } )
+		).toBeVisible();
+		await expect(
+			page
+				.getByRole( 'row' )
+				.filter( { hasText: '/e2e-old' } )
+				.getByText( /By: admin ·/ )
 		).toBeVisible();
 
 		await page.getByLabel( 'Test a URL' ).fill( '/e2e-old' );
