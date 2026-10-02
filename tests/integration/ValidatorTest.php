@@ -97,6 +97,13 @@ final class ValidatorTest extends WP_UnitTestCase {
 		$this->assertSame( 'https://new.com$1', $result['data']['target'] );
 	}
 
+	public function test_relative_target_starting_with_a_capture_is_allowed(): void {
+		$result = $this->valid( [ 'type' => 'regex', 'source' => '^/([^/]+)/foo/\w+/?$', 'target' => '/$1/', 'status_code' => 301 ] );
+		$this->assertSame( '/$1/', $result['data']['target'] );
+		$result = $this->valid( [ 'type' => 'regex', 'source' => '^/(.*)$', 'target' => '/$1', 'status_code' => 301 ] );
+		$this->assertSame( '/$1', $result['data']['target'] );
+	}
+
 	public function test_capture_in_host_rejected(): void {
 		foreach ( [ 'https://$1/x', 'https://$1', 'https://new.com$1.evil.com/', 'https://new.com$1:8080/' ] as $target ) {
 			$this->assertSame( 'adv_redirects_invalid_target', $this->error_code( [ 'type' => 'regex', 'source' => '^/(.*)$', 'target' => $target, 'status_code' => 301 ] ), $target );

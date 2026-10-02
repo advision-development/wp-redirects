@@ -34,6 +34,16 @@ final class TargetResolverTest extends TestCase {
 		$this->assertSame( 'https://example.com/new/', $this->resolver()->resolve( '/new/$2', [ '/x', 'y' ], '', false ) );
 	}
 
+	public function test_relative_template_starting_with_a_capture_stays_on_site(): void {
+		$this->assertSame( 'https://example.com/blog/', $this->resolver()->resolve( '/$1/', [ '/blog/x/foo/y', 'blog' ], '', false ) );
+		$this->assertSame( 'https://example.com/a/b', $this->resolver()->resolve( '/$1$2', [ '/a/b', 'a', '/b' ], '', false ) );
+	}
+
+	public function test_relative_template_with_capture_still_rejects_host_change(): void {
+		// "/$1/" with capture "/evil.com" would produce "//evil.com/".
+		$this->assertNull( $this->resolver()->resolve( '/$1/', [ '/x', '/evil.com' ], '', false ) );
+	}
+
 	public function test_capture_cannot_change_host(): void {
 		// Rule "^/go/(.*)$" → "/$1" hit with "/go//evil.com".
 		$this->assertNull( $this->resolver()->resolve( '/$1', [ '/go//evil.com', '/evil.com' ], '', false ) );

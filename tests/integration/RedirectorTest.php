@@ -59,6 +59,13 @@ final class RedirectorTest extends WP_UnitTestCase {
 		$this->assertSame( 'http://example.org/new', $this->redirector->decide( '/old?utm=1', 'GET' )['url'] );
 	}
 
+	public function test_regex_relative_target_starting_with_a_capture_redirects(): void {
+		$this->rule( 'regex', '^/old/(.*)$', '/$1/' );
+		$decision = $this->redirector->decide( '/old/thing', 'GET' );
+		$this->assertNotNull( $decision );
+		$this->assertSame( 'http://example.org/thing/', $decision['url'] );
+	}
+
 	public function test_regex_redirect_with_capture(): void {
 		$this->rule( 'regex', '^/blog/(\d+)/?$', '/posts/$1', 302 );
 		$decision = $this->redirector->decide( '/blog/42', 'HEAD' );

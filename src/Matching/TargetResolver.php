@@ -37,7 +37,7 @@ final class TargetResolver {
 		}
 
 		// The host must be exactly what the template declares, ignoring capture placeholders.
-		$expected_host = UrlSafety::host_of( (string) preg_replace( '/\$[1-9]/', '', $template ), $this->site_host );
+		$expected_host = self::expected_host( $template, $this->site_host );
 		$host          = UrlSafety::host_of( $url, $this->site_host );
 		if ( '' === $host || $expected_host !== $host ) {
 			return null;
@@ -57,6 +57,19 @@ final class TargetResolver {
 			}
 		}
 		return $url;
+	}
+
+	/**
+	 * The host a template declares. A template that literally starts with a single "/" is
+	 * relative, so it is the site host (checked on the raw template, because stripping "$1"
+	 * from "/$1/" would leave a protocol-relative "//"). Otherwise the host of the template
+	 * with its capture placeholders removed. Returns '' when no host can be determined.
+	 */
+	public static function expected_host( string $template, string $site_host ): string {
+		if ( '' !== $template && '/' === $template[0] && 0 !== strpos( $template, '//' ) ) {
+			return $site_host;
+		}
+		return UrlSafety::host_of( (string) preg_replace( '/\$[1-9]/', '', $template ), $site_host );
 	}
 
 	public static function substitute( string $template, array $captures, bool $encode ): string {

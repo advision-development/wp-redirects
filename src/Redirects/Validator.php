@@ -229,7 +229,7 @@ final class Validator {
 			return self::error( 'adv_redirects_invalid_target', __( 'Capture references ($1-$9) cannot be used in the host.', 'wp-redirects' ) );
 		}
 
-		$host = UrlSafety::host_of( (string) preg_replace( '/\$[1-9]/', '', $target ), Site::host() );
+		$host = TargetResolver::expected_host( $target, Site::host() );
 		if ( '' === $host ) {
 			return self::error( 'adv_redirects_invalid_target', __( 'Capture references ($1-$9) cannot be used in the host.', 'wp-redirects' ) );
 		}
