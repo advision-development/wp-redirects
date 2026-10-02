@@ -19,6 +19,9 @@ final class Rule {
 	public int $position        = 0;
 	public bool $enabled        = true;
 	public string $origin       = 'manual';
+	public ?int $created_by     = null;
+	public string $created_via  = 'manual';
+	public ?int $updated_by     = null;
 	public string $note         = '';
 	public int $hits            = 0;
 	public ?string $last_hit_at = null;
@@ -35,6 +38,9 @@ final class Rule {
 		$rule->position    = (int) $row['position'];
 		$rule->enabled     = (bool) (int) $row['enabled'];
 		$rule->origin      = (string) $row['origin'];
+		$rule->created_by  = empty( $row['created_by'] ) ? null : (int) $row['created_by'];
+		$rule->created_via = isset( $row['created_via'] ) && '' !== $row['created_via'] ? (string) $row['created_via'] : 'manual';
+		$rule->updated_by  = empty( $row['updated_by'] ) ? null : (int) $row['updated_by'];
 		$rule->note        = (string) $row['note'];
 		$rule->hits        = (int) $row['hits'];
 		$rule->last_hit_at = empty( $row['last_hit_at'] ) ? null : (string) $row['last_hit_at'];
@@ -53,6 +59,9 @@ final class Rule {
 			'position'    => $this->position,
 			'enabled'     => $this->enabled,
 			'origin'      => $this->origin,
+			'created_by'  => $this->created_by,
+			'created_via' => $this->created_via,
+			'updated_by'  => $this->updated_by,
 			'note'        => $this->note,
 			'hits'        => $this->hits,
 			'last_hit_at' => $this->last_hit_at,

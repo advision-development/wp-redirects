@@ -27,6 +27,8 @@ final class Repository {
 		'note'        => '%s',
 	];
 
+	private const CREATED_VIA = [ 'manual', 'import', 'slug', 'api' ];
+
 	/**
 	 * In-memory snapshot, only while a read-cache scope is open. Every write clears it.
 	 *
@@ -170,6 +172,8 @@ final class Repository {
 
 		$now  = current_time( 'mysql', true );
 		$type = 'regex' === ( $data['type'] ?? '' ) ? 'regex' : 'exact';
+		$user = self::current_user_or_null();
+		$via  = in_array( $data['created_via'] ?? '', self::CREATED_VIA, true ) ? $data['created_via'] : 'manual';
 
 		$ok = $wpdb->insert(
 			Schema::redirects_table(),
@@ -181,12 +185,15 @@ final class Repository {
 				'position'    => 'regex' === $type ? $this->next_position() : 0,
 				'enabled'     => array_key_exists( 'enabled', $data ) ? ( $data['enabled'] ? 1 : 0 ) : 1,
 				'origin'      => 'auto' === ( $data['origin'] ?? '' ) ? 'auto' : 'manual',
+				'created_by'  => $user,
+				'created_via' => $via,
+				'updated_by'  => null,
 				'note'        => (string) ( $data['note'] ?? '' ),
 				'hits'        => 0,
 				'created_at'  => $now,
 				'updated_at'  => $now,
 			],
-			[ '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%d', '%s', '%s' ]
+			[ '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%d', '%s', '%d', '%s', '%d', '%s', '%s' ]
 		);
 		if ( false === $ok ) {
 			return null;
@@ -244,6 +251,8 @@ final class Repository {
 		}
 		$row['updated_at'] = current_time( 'mysql', true );
 		$formats[]         = '%s';
+		$row['updated_by'] = self::current_user_or_null();
+		$formats[]         = '%d';
 
 		if ( false === $wpdb->update( Schema::redirects_table(), $row, [ 'id' => $id ], $formats, [ '%d' ] ) ) {
 			return null;
@@ -367,6 +376,14 @@ final class Repository {
 				$id
 			)
 		);
+	}
+
+	/**
+	 * The signed-in user's ID, or null for no user (cron, WP-CLI, the front end).
+	 */
+	private static function current_user_or_null(): ?int {
+		$id = get_current_user_id();
+		return $id > 0 ? $id : null;
 	}
 
 	private function next_position(): int {

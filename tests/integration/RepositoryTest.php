@@ -267,4 +267,86 @@ final class RepositoryTest extends WP_UnitTestCase {
 		$this->repo->insert( [ 'type' => 'exact', 'source' => '/live-c', 'target' => '/x', 'status_code' => 301 ] );
 		$this->assertCount( 3, $this->repo->all() );
 	}
+
+	public function test_insert_records_the_current_user_and_defaults_to_manual(): void {
+		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $admin );
+
+		$rule = $this->exact( '/attr-a', '/x' );
+		$this->assertSame( $admin, $rule->created_by );
+		$this->assertSame( 'manual', $rule->created_via );
+		$this->assertNull( $rule->updated_by );
+	}
+
+	public function test_insert_honours_known_created_via_values_only(): void {
+		foreach ( [ 'import', 'slug', 'api', 'manual' ] as $via ) {
+			$rule = $this->exact( "/via-{$via}", '/x', 301, [ 'created_via' => $via ] );
+			$this->assertSame( $via, $rule->created_via );
+		}
+		$this->assertSame( 'manual', $this->exact( '/via-bogus', '/x', 301, [ 'created_via' => 'hacker' ] )->created_via );
+	}
+
+	public function test_insert_ignores_created_by_and_updated_by_in_data(): void {
+		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		$other = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $admin );
+
+		$rule = $this->exact( '/spoof', '/x', 301, [ 'created_by' => $other, 'updated_by' => $other ] );
+		$this->assertSame( $admin, $rule->created_by );
+		$this->assertNull( $rule->updated_by );
+	}
+
+	public function test_insert_without_a_user_stores_null_created_by(): void {
+		wp_set_current_user( 0 );
+		$rule = $this->exact( '/nobody', '/x' );
+		$this->assertNull( $rule->created_by );
+		$this->assertNull( $this->repo->find( $rule->id )->created_by );
+	}
+
+	public function test_update_records_the_editor_and_keeps_creation_fields(): void {
+		$creator = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		$editor  = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $creator );
+		$rule = $this->exact( '/edited', '/x', 301, [ 'created_via' => 'import' ] );
+
+		wp_set_current_user( $editor );
+		$updated = $this->repo->update( $rule->id, [ 'target' => '/y' ] );
+		$this->assertSame( $editor, $updated->updated_by );
+		$this->assertSame( $creator, $updated->created_by );
+		$this->assertSame( 'import', $updated->created_via );
+	}
+
+	public function test_update_ignores_created_fields_in_data(): void {
+		$creator = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		$editor  = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $creator );
+		$rule = $this->exact( '/locked', '/x' );
+
+		wp_set_current_user( $editor );
+		$updated = $this->repo->update( $rule->id, [ 'target' => '/y', 'created_by' => $editor, 'created_via' => 'api', 'updated_by' => $creator ] );
+		$this->assertSame( $creator, $updated->created_by );
+		$this->assertSame( 'manual', $updated->created_via );
+		$this->assertSame( $editor, $updated->updated_by );
+	}
+
+	public function test_update_without_a_user_writes_null_updated_by(): void {
+		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $admin );
+		$rule = $this->exact( '/anon-edit', '/x' );
+		$this->repo->update( $rule->id, [ 'target' => '/y' ] );
+		$this->assertSame( $admin, $this->repo->find( $rule->id )->updated_by );
+
+		wp_set_current_user( 0 );
+		$this->assertNull( $this->repo->update( $rule->id, [ 'target' => '/z' ] )->updated_by );
+	}
+
+	public function test_reorder_and_hits_are_not_edits(): void {
+		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $admin );
+		$a = $this->repo->insert( [ 'type' => 'regex', 'source' => '^/oa', 'target' => '/a', 'status_code' => 301 ] );
+		$b = $this->repo->insert( [ 'type' => 'regex', 'source' => '^/ob', 'target' => '/b', 'status_code' => 301 ] );
+		$this->repo->reorder( [ $b->id, $a->id ] );
+		$this->repo->add_hits( $a->id, 2, '2026-10-01 00:00:00' );
+		$this->assertNull( $this->repo->find( $a->id )->updated_by );
+	}
 }

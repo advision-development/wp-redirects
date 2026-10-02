@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class Schema {
 
-	public const VERSION = '1';
+	public const VERSION = '2';
 
 	public const VERSION_OPTION = 'adv_redirects_db_version';
 
@@ -43,6 +43,9 @@ final class Schema {
   position int(10) unsigned NOT NULL DEFAULT 0,
   enabled tinyint(1) NOT NULL DEFAULT 1,
   origin varchar(10) NOT NULL DEFAULT 'manual',
+  created_by bigint(20) unsigned DEFAULT NULL,
+  created_via varchar(10) NOT NULL DEFAULT 'manual',
+  updated_by bigint(20) unsigned DEFAULT NULL,
   note varchar(255) NOT NULL DEFAULT '',
   hits bigint(20) unsigned NOT NULL DEFAULT 0,
   last_hit_at datetime DEFAULT NULL,
