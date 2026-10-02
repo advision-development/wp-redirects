@@ -1,5 +1,5 @@
 import { Button, Notice, SearchControl, Spinner } from '@wordpress/components';
-import { useCallback, useEffect, useState } from '@wordpress/element';
+import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage } from '../constants';
@@ -24,6 +24,8 @@ export default function NotFoundTab( {
 	const [ searchInput, setSearchInput ] = useState( '' );
 	const [ data, setData ] = useState( { items: [], total: 0, pages: 0 } );
 	const [ loading, setLoading ] = useState( true );
+	const [ loaded, setLoaded ] = useState( false );
+	const latestRequest = useRef( 0 );
 	const [ selected, setSelected ] = useState( [] );
 	const [ confirm, setConfirm ] = useState( null );
 
@@ -40,12 +42,18 @@ export default function NotFoundTab( {
 	}, [ searchInput ] );
 
 	const load = useCallback( async () => {
+		latestRequest.current += 1;
+		const request = latestRequest.current;
 		setLoading( true );
 		try {
 			const result = await api.list404s( {
 				...query,
 				perPage: PER_PAGE,
 			} );
+			if ( request !== latestRequest.current ) {
+				// A newer request superseded this one.
+				return;
+			}
 			if (
 				result.items.length === 0 &&
 				result.pages > 0 &&
@@ -61,9 +69,14 @@ export default function NotFoundTab( {
 			setData( result );
 			setSelected( [] );
 		} catch ( error ) {
-			notify( { status: 'error', message: errorMessage( error ) } );
+			if ( request === latestRequest.current ) {
+				notify( { status: 'error', message: errorMessage( error ) } );
+			}
 		} finally {
-			setLoading( false );
+			if ( request === latestRequest.current ) {
+				setLoading( false );
+				setLoaded( true );
+			}
 		}
 	}, [ query, notify ] );
 
@@ -99,7 +112,7 @@ export default function NotFoundTab( {
 		return query.order === 'asc' ? 'ascending' : 'descending';
 	};
 
-	const visibleIds = loading ? [] : data.items.map( ( item ) => item.id );
+	const visibleIds = loaded ? data.items.map( ( item ) => item.id ) : [];
 	const selectedVisible = visibleSelection( selected, visibleIds );
 	const allSelected =
 		visibleIds.length > 0 &&
@@ -124,6 +137,7 @@ export default function NotFoundTab( {
 						onChange={ setSearchInput }
 					/>
 					<div className="adv-redirects-bulk">
+						{ loaded && loading && <Spinner /> }
 						<Button
 							variant="secondary"
 							size="compact"
@@ -150,20 +164,25 @@ export default function NotFoundTab( {
 					</div>
 				</div>
 
-				{ loading && (
+				{ ! loaded && (
 					<div className="adv-redirects-loading">
 						<Spinner />
 					</div>
 				) }
-				{ ! loading && data.items.length === 0 && (
+				{ loaded && ! loading && data.items.length === 0 && (
 					<p className="adv-redirects-empty">
 						{ query.search
 							? __( 'No 404s match this search.', 'wp-redirects' )
 							: __( 'No 404s recorded. Nice.', 'wp-redirects' ) }
 					</p>
 				) }
-				{ ! loading && data.items.length > 0 && (
-					<div className="adv-redirects-tablewrap">
+				{ loaded && data.items.length > 0 && (
+					<div
+						className={ `adv-redirects-tablewrap${
+							loading ? ' is-loading' : ''
+						}` }
+						aria-busy={ loading }
+					>
 						<table className="adv-redirects-table">
 							<thead>
 								<tr>

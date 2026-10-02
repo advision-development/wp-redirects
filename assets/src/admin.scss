@@ -403,3 +403,8 @@
 		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 	}
 }
+
+.adv-redirects-tablewrap.is-loading {
+	opacity: 0.6;
+	transition: opacity 0.15s;
+}
