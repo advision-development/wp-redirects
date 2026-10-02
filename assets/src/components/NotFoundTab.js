@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage } from '../constants';
-import { visibleSelection } from '../utils/rules';
+import { pathWithoutQuery, visibleSelection } from '../utils/rules';
 import { parseGmt, timeAgo } from '../utils/time';
 import ConfirmModal from './ConfirmModal';
 
@@ -344,7 +344,9 @@ export default function NotFoundTab( {
 													) }
 													onClick={ () =>
 														onCreateRedirect(
-															item.path
+															pathWithoutQuery(
+																item.path
+															)
 														)
 													}
 												>

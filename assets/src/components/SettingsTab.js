@@ -1,9 +1,15 @@
 import { Button, TextControl, ToggleControl } from '@wordpress/components';
-import { useEffect, useState } from '@wordpress/element';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage } from '../constants';
-import { formatExtensions, parseExtensions } from '../utils/settings';
+import {
+	formatExtensions,
+	parseExtensions,
+	SETTINGS_FIELDS,
+	splitSettingsErrors,
+} from '../utils/settings';
+import Field from './Field';
 
 export default function SettingsTab( { settings, onSaved, notify } ) {
 	const [ values, setValues ] = useState( settings );
@@ -11,18 +17,26 @@ export default function SettingsTab( { settings, onSaved, notify } ) {
 		formatExtensions( settings.excluded_404_extensions )
 	);
 	const [ busy, setBusy ] = useState( false );
+	const [ errors, setErrors ] = useState( {} );
+	const formRef = useRef();
 
 	useEffect( () => {
 		setValues( settings );
 		setExtensions( formatExtensions( settings.excluded_404_extensions ) );
 	}, [ settings ] );
 
-	const set = ( key ) => ( value ) =>
+	const clearError = ( key ) =>
+		setErrors( ( current ) => ( { ...current, [ key ]: undefined } ) );
+
+	const set = ( key ) => ( value ) => {
 		setValues( ( current ) => ( { ...current, [ key ]: value } ) );
+		clearError( key );
+	};
 
 	const save = async ( event ) => {
 		event.preventDefault();
 		setBusy( true );
+		setErrors( {} );
 		try {
 			const saved = await api.saveSettings( {
 				slug_watcher: values.slug_watcher,
@@ -36,7 +50,18 @@ export default function SettingsTab( { settings, onSaved, notify } ) {
 			onSaved( saved );
 			notify( { message: __( 'Settings saved.', 'wp-redirects' ) } );
 		} catch ( error ) {
-			notify( { status: 'error', message: errorMessage( error ) } );
+			const { fields, general } = splitSettingsErrors( error );
+			setErrors( fields );
+			if ( general ) {
+				notify( { status: 'error', message: errorMessage( error ) } );
+			}
+			// Let the user land on the first field that needs fixing.
+			const first = SETTINGS_FIELDS.find( ( key ) => fields[ key ] );
+			if ( first ) {
+				formRef.current
+					?.querySelector( `[data-setting="${ first }"]` )
+					?.focus();
+			}
 		} finally {
 			setBusy( false );
 		}
@@ -46,6 +71,7 @@ export default function SettingsTab( { settings, onSaved, notify } ) {
 		<form
 			className="adv-redirects-card adv-redirects-settings"
 			onSubmit={ save }
+			ref={ formRef }
 		>
 			<h2 className="adv-redirects-card__title">
 				{ __( 'Redirects', 'wp-redirects' ) }
@@ -84,38 +110,65 @@ export default function SettingsTab( { settings, onSaved, notify } ) {
 				onChange={ set( 'log_404' ) }
 			/>
 			<div className="adv-redirects-settings__row">
-				<TextControl
-					__nextHasNoMarginBottom
-					__next40pxDefaultSize
-					type="number"
-					min={ 1 }
-					max={ 365 }
-					label={ __( 'Keep entries for (days)', 'wp-redirects' ) }
-					value={ String( values.log_404_retention_days ) }
-					onChange={ set( 'log_404_retention_days' ) }
-				/>
-				<TextControl
-					__nextHasNoMarginBottom
-					__next40pxDefaultSize
-					type="number"
-					min={ 100 }
-					max={ 100000 }
-					label={ __( 'Maximum entries', 'wp-redirects' ) }
-					value={ String( values.log_404_max_rows ) }
-					onChange={ set( 'log_404_max_rows' ) }
-				/>
+				<Field error={ errors.log_404_retention_days }>
+					{ ( fieldProps ) => (
+						<TextControl
+							__nextHasNoMarginBottom
+							__next40pxDefaultSize
+							{ ...fieldProps }
+							data-setting="log_404_retention_days"
+							type="number"
+							min={ 1 }
+							max={ 365 }
+							label={ __(
+								'Keep entries for (days)',
+								'wp-redirects'
+							) }
+							value={ String( values.log_404_retention_days ) }
+							onChange={ set( 'log_404_retention_days' ) }
+						/>
+					) }
+				</Field>
+				<Field error={ errors.log_404_max_rows }>
+					{ ( fieldProps ) => (
+						<TextControl
+							__nextHasNoMarginBottom
+							__next40pxDefaultSize
+							{ ...fieldProps }
+							data-setting="log_404_max_rows"
+							type="number"
+							min={ 100 }
+							max={ 100000 }
+							label={ __( 'Maximum entries', 'wp-redirects' ) }
+							value={ String( values.log_404_max_rows ) }
+							onChange={ set( 'log_404_max_rows' ) }
+						/>
+					) }
+				</Field>
 			</div>
-			<TextControl
-				__nextHasNoMarginBottom
-				__next40pxDefaultSize
-				label={ __( 'Ignore these file extensions', 'wp-redirects' ) }
-				help={ __(
-					'Comma-separated, for example: css, js, png',
-					'wp-redirects'
+			<Field error={ errors.excluded_404_extensions } hasHelp>
+				{ ( fieldProps ) => (
+					<TextControl
+						__nextHasNoMarginBottom
+						__next40pxDefaultSize
+						{ ...fieldProps }
+						data-setting="excluded_404_extensions"
+						label={ __(
+							'Ignore these file extensions',
+							'wp-redirects'
+						) }
+						help={ __(
+							'Comma-separated, for example: css, js, png',
+							'wp-redirects'
+						) }
+						value={ extensions }
+						onChange={ ( value ) => {
+							setExtensions( value );
+							clearError( 'excluded_404_extensions' );
+						} }
+					/>
 				) }
-				value={ extensions }
-				onChange={ setExtensions }
-			/>
+			</Field>
 
 			<h2 className="adv-redirects-card__title">
 				{ __( 'Uninstall', 'wp-redirects' ) }

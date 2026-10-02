@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage, ruleToPayload } from '../constants';
+import { restoredRegexOrder } from '../utils/rules';
 import { initialState, redirectsReducer } from './redirectsReducer';
 
 export function useRedirects( notify ) {
@@ -56,6 +57,8 @@ export function useRedirects( notify ) {
 
 	const remove = useCallback(
 		async ( rule ) => {
+			// The list before the delete, to put a re-created regex rule back in place.
+			const before = itemsRef.current;
 			dispatch( { type: 'REMOVE', ids: [ rule.id ] } );
 			try {
 				await api.deleteRedirect( rule.id );
@@ -65,14 +68,28 @@ export function useRedirects( notify ) {
 					actions: [
 						{
 							label: __( 'Undo', 'wp-redirects' ),
-							onClick: () =>
-								create( ruleToPayload( rule ) ).catch(
-									( error ) =>
-										notify( {
-											status: 'error',
-											message: errorMessage( error ),
-										} )
-								),
+							onClick: async () => {
+								try {
+									const result = await create(
+										ruleToPayload( rule )
+									);
+									// Re-creating appends the rule, so restore a regex rule's order.
+									const order = restoredRegexOrder(
+										before,
+										rule,
+										result.rule.id
+									);
+									if ( order ) {
+										await api.reorderRedirects( order );
+										await reload();
+									}
+								} catch ( error ) {
+									notify( {
+										status: 'error',
+										message: errorMessage( error ),
+									} );
+								}
+							},
 						},
 					],
 				} );
@@ -116,12 +133,14 @@ export function useRedirects( notify ) {
 			dispatch( { type: 'REORDER', ids } );
 			try {
 				await api.reorderRedirects( ids );
+				// Chain and loop flags depend on the order.
+				reload();
 			} catch ( error ) {
 				dispatch( { type: 'LOADED', items: previous } );
 				notify( { status: 'error', message: errorMessage( error ) } );
 			}
 		},
-		[ notify ]
+		[ notify, reload ]
 	);
 
 	return { ...state, reload, create, update, remove, bulk, reorder };

@@ -3,6 +3,8 @@ import {
 	filterRules,
 	isFiltered,
 	moveItem,
+	pathWithoutQuery,
+	restoredRegexOrder,
 	sortRules,
 	splitByType,
 	visibleSelection,
@@ -163,5 +165,30 @@ describe( 'visibleSelection', () => {
 	it( 'returns an empty list when nothing selected is visible', () => {
 		expect( visibleSelection( [ 5 ], [ 1, 2 ] ) ).toEqual( [] );
 		expect( visibleSelection( [], [ 1, 2 ] ) ).toEqual( [] );
+	} );
+} );
+
+describe( 'pathWithoutQuery', () => {
+	it( 'drops the query string', () => {
+		expect( pathWithoutQuery( '/old?fbclid=x&y=1' ) ).toBe( '/old' );
+		expect( pathWithoutQuery( '/old/' ) ).toBe( '/old/' );
+		expect( pathWithoutQuery( '/?p=1' ) ).toBe( '/' );
+	} );
+} );
+
+describe( 'restoredRegexOrder', () => {
+	const items = [
+		{ id: 1, type: 'exact', position: 0 },
+		{ id: 5, type: 'regex', position: 1 },
+		{ id: 6, type: 'regex', position: 2 },
+		{ id: 7, type: 'regex', position: 3 },
+	];
+	it( 'puts the re-created rule back where the deleted one was', () => {
+		expect( restoredRegexOrder( items, items[ 2 ], 20 ) ).toEqual( [
+			5, 20, 7,
+		] );
+	} );
+	it( 'does nothing for exact rules', () => {
+		expect( restoredRegexOrder( items, items[ 0 ], 20 ) ).toBeNull();
 	} );
 } );
