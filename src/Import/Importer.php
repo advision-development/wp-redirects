@@ -45,10 +45,11 @@ final class Importer {
 	}
 
 	private function run_preview( array $redirects, array $groups ): array {
-		$entries = [];
-		$pending = [];
-		$next_id = -1;
-		$lookup  = $this->existing_lookup();
+		$entries    = [];
+		$pending    = [];
+		$candidates = [];
+		$next_id    = -1;
+		$lookup     = $this->existing_lookup();
 
 		foreach ( $this->plan( $redirects, $groups ) as $index => $item ) {
 			$entry = [
@@ -102,7 +103,7 @@ final class Importer {
 			// An overwrite always replaces the old row in the walk (a disabled one drops out of
 			// it). A new rule that is disabled can never matter, so it is left out.
 			if ( null !== $existing || $result['data']['enabled'] ) {
-				$pending[] = [
+				$row       = [
 					'id'          => null !== $existing ? $existing->id : $next_id--,
 					'type'        => $result['data']['type'],
 					'source'      => $result['data']['source'],
@@ -111,8 +112,36 @@ final class Importer {
 					'enabled'     => $result['data']['enabled'] ? 1 : 0,
 					'position'    => null !== $existing && 'regex' === $existing->type ? $existing->position : 1000000 + $index,
 				];
+				$pending[] = $row;
+
+				// Only an enabled rule with a fixed target can start a chain (the Validator's own skip rule).
+				if ( $result['data']['enabled'] && null !== $result['data']['target'] && ! ( 'regex' === $result['data']['type'] && preg_match( '/\$[1-9]/', (string) $result['data']['target'] ) ) ) {
+					$candidates[] = [
+						'entry'       => count( $entries ),
+						'input'       => self::validator_input( $item['rule'] ),
+						'existing_id' => null !== $existing ? $existing->id : null,
+						'row_id'      => $row['id'],
+					];
+				}
 			}
 			$entries[] = $entry;
+		}
+
+		// Second pass: a rule can only see earlier rows in the first pass, so a chain whose next
+		// hop is defined later in the file is found here, against every accepted row.
+		foreach ( $candidates as $candidate ) {
+			$others = array_values(
+				array_filter(
+					$pending,
+					static function ( array $row ) use ( $candidate ): bool {
+						return $row['id'] !== $candidate['row_id'];
+					}
+				)
+			);
+			$result = $this->validator->validate( $candidate['input'], $candidate['existing_id'], $others );
+			if ( is_array( $result ) ) {
+				$entries[ $candidate['entry'] ]['warnings'] = $result['warnings'];
+			}
 		}
 
 		return [

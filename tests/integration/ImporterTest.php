@@ -197,6 +197,21 @@ final class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( '/new-target/', $this->repo->find( $existing->id )->target );
 	}
 
+	public function test_preview_warns_about_a_chain_whose_next_hop_is_defined_later_in_the_file(): void {
+		$redirects = [
+			$this->entry( 1, '/cw-a/', '/cw-b/' ),
+			$this->entry( 2, '/cw-b/', '/cw-c/' ),
+		];
+
+		$preview = $this->importer->preview( $redirects, $this->export['groups'] );
+		$first   = $this->by_source_id( $preview['entries'], 1 );
+		$this->assertSame( 'new', $first['status'] );
+		$this->assertSame( 'chain', $first['warnings'][0]['code'] );
+		$this->assertSame( [ '/cw-a/', '/cw-b/', '/cw-c/' ], $first['warnings'][0]['hops'] );
+		$this->assertSame( [], $this->by_source_id( $preview['entries'], 2 )['warnings'] );
+		$this->assertSame( 1, $preview['counts']['warnings'] );
+	}
+
 	public function test_preview_does_not_leave_the_read_cache_open(): void {
 		$this->importer->preview( [ $this->entry( 1, '/rc-open/', '/x/' ) ], $this->export['groups'] );
 		$this->repo->insert( [ 'type' => 'exact', 'source' => '/after-preview', 'target' => '/x', 'status_code' => 301 ] );
