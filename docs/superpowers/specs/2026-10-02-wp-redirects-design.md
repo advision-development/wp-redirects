@@ -541,7 +541,7 @@ The filter `adv_redirects_import_rule( array|false $rule, array $entry )` can mo
 
 **Validation:**
 - Every mapped rule passes through `Validator::validate()`, with the existing rule's id when overwriting. Failures are `skipped` with the validator's error code and message.
-- Chain warnings are reported as `warning` and the rule still imports.
+- Chain warnings are added to the entry's `warnings` list (its status stays `new` or `overwrite`), and the rule still imports.
 - **Preview accuracy:** the Validator accepts optional *pending rows*, the import rules ahead of the current one in the file. Loops that form only between imported rules therefore appear in the preview. Normal saves pass no pending rows and behave unchanged.
 
 ### 17.5 REST
@@ -550,7 +550,7 @@ Both routes use the standard permission check and argument schemas, and reject u
 
 | Route | Body | Response |
 |---|---|---|
-| `POST /import/preview` | `{ source: "redirection", version, groups, redirects }`, max 5,000 redirects | per-entry `{ index, source_id, status: new\|overwrite\|superseded\|skipped, warnings[], notes[], rule, existing_id?, current? , error? }` plus `counts` |
+| `POST /import/preview` | `{ source: "redirection", version, groups, redirects }`, max 5,000 redirects | per-entry `{ index, source_id, status: new\|overwrite\|superseded\|skipped, warnings[], notes[], rule, existing_id?, current?, error? }` plus `counts` |
 | `POST /import` | `{ source: "redirection", groups, redirects }`, max 50 redirects; caller sends batches in file order | per-entry `{ index, result: created\|updated\|skipped, rule_id?, error? }` plus `counts` |
 
 - Writes go through `Repository` (cache flush and rule hooks fire as for manual edits).
