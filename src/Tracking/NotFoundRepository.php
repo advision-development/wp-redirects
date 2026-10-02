@@ -121,9 +121,11 @@ final class NotFoundRepository {
 		$prefix = rtrim( explode( '?', $key, 2 )[0], '/' );
 		$rows   = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT id, path FROM %i WHERE path LIKE %s LIMIT 500',
+				'SELECT id, path FROM %i WHERE path = %s OR path LIKE %s OR path LIKE %s LIMIT 500',
 				Schema::not_found_table(),
-				$wpdb->esc_like( '' === $prefix ? '/' : $prefix ) . '%'
+				'' === $prefix ? '/' : $prefix,
+				$wpdb->esc_like( $prefix ) . '/%',
+				$wpdb->esc_like( $prefix ) . '?%'
 			),
 			ARRAY_A
 		);

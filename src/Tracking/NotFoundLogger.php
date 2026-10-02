@@ -64,6 +64,9 @@ final class NotFoundLogger {
 		}
 
 		$path = self::clean( $request['path'] . ( '' !== $request['query'] ? '?' . $request['query'] : '' ) );
+		if ( '' === $path ) {
+			return false;
+		}
 
 		/**
 		 * Filters whether a 404 is logged.
@@ -93,6 +96,8 @@ final class NotFoundLogger {
 	}
 
 	public static function clean( string $value ): string {
+		// Strip invalid UTF-8 first: preg_replace() with /u returns null on it, which would blank the whole value.
+		$value = wp_check_invalid_utf8( $value, true );
 		$value = (string) preg_replace( '/[\x00-\x1F\x7F]/u', '', $value );
 		return mb_substr( $value, 0, 2048 );
 	}

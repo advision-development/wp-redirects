@@ -86,11 +86,35 @@ final class NotFoundTest extends WP_UnitTestCase {
 	public function test_creating_a_redirect_removes_matching_404(): void {
 		$this->logger->log_request( '/Old-Page/', 'GET', '' );
 		$this->logger->log_request( '/old-page-2', 'GET', '' );
+		$this->logger->log_request( '/old-page-zzz', 'GET', '' );
 		$this->logger->register();
 
 		( new Repository() )->insert( [ 'type' => 'exact', 'source' => '/old-page', 'target' => '/new', 'status_code' => 301 ] );
 
-		$this->assertSame( [ '/old-page-2' ], array_column( $this->repo->query( [] )['items'], 'path' ) );
+		$remaining = array_column( $this->repo->query( [ 'orderby' => 'path', 'order' => 'asc' ] )['items'], 'path' );
+		$this->assertSame( [ '/old-page-2', '/old-page-zzz' ], $remaining );
+	}
+
+	public function test_invalid_utf8_path_is_logged_not_blanked(): void {
+		// WP < 6.9 strips the invalid byte, WP >= 6.9 replaces it with U+FFFD; either way the valid prefix survives.
+		$cleaned = NotFoundLogger::clean( "/caf\xE9" );
+		$this->assertSame( 0, strpos( $cleaned, '/caf' ) );
+		$this->assertTrue( mb_check_encoding( $cleaned, 'UTF-8' ) );
+
+		$this->assertTrue( $this->logger->log_request( '/caf%E9', 'GET', '' ) );
+		$this->assertTrue( $this->logger->log_request( '/other%FF', 'GET', '' ) );
+
+		$paths = array_column( $this->repo->query( [ 'orderby' => 'path', 'order' => 'asc' ] )['items'], 'path' );
+		$this->assertSame( 2, count( $paths ) );
+		$this->assertNotContains( '', $paths );
+		$this->assertSame( [ NotFoundLogger::clean( "/caf\xE9" ), NotFoundLogger::clean( "/other\xFF" ) ], $paths );
+	}
+
+	public function test_invalid_utf8_referrer_is_not_blanked(): void {
+		$this->logger->log_request( '/missing', 'GET', "https://ref.example/caf\xE9" );
+		$referrer = $this->repo->query( [] )['items'][0]['last_referrer'];
+		$this->assertSame( 0, strpos( $referrer, 'https://ref.example/caf' ) );
+		$this->assertTrue( mb_check_encoding( $referrer, 'UTF-8' ) );
 	}
 
 	public function test_prune_by_age_and_row_cap(): void {
