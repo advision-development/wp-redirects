@@ -550,7 +550,7 @@ Both routes use the standard permission check and argument schemas, and reject u
 
 | Route | Body | Response |
 |---|---|---|
-| `POST /import/preview` | `{ source: "redirection", version, groups, redirects }`, max 5,000 redirects | per-entry `{ index, source_id, status: new\|overwrite\|superseded\|skipped, warnings[], notes[], rule, existing_id?, current?, error? }` plus `counts` |
+| `POST /import/preview` | `{ source: "redirection", version, groups, redirects }`, max 2,000 redirects | per-entry `{ index, source_id, status: new\|overwrite\|superseded\|skipped, warnings[], notes[], rule, existing_id?, current?, error? }` plus `counts` |
 | `POST /import` | `{ source: "redirection", groups, redirects }`, max 50 redirects; caller sends batches in file order | per-entry `{ index, result: created\|updated\|skipped, rule_id?, error? }` plus `counts` |
 
 - Writes go through `Repository` (cache flush and rule hooks fire as for manual edits).
@@ -585,7 +585,7 @@ Both routes use the standard permission check and argument schemas, and reject u
   - overwrite keeps id and hits
   - "Modified Posts" becomes auto
   - `superseded` duplicates
-  - limits (5,000 / 50), unknown fields, and permissions
+  - limits (2,000 / 50), unknown fields, and permissions
   - re-import is idempotent
 - **Playwright:** upload the fixture, check preview counts, import, see the progress bar reach 100%, and find the new rules on the Redirects tab.
 - **Never committed:** real exports. `.gitignore` excludes `/redirection-export*.json` and `/*-export.json`.
