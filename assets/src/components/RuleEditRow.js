@@ -7,6 +7,7 @@ import {
 	isGone,
 	STATUS_OPTIONS,
 } from '../constants';
+import { createdLine, editedLine } from '../utils/attribution';
 import Field from './Field';
 
 export default function RuleEditRow( { rule, colSpan, onSave, onCancel } ) {
@@ -20,6 +21,7 @@ export default function RuleEditRow( { rule, colSpan, onSave, onCancel } ) {
 	const [ busy, setBusy ] = useState( false );
 	const sourceRef = useRef();
 	const gone = isGone( values.status_code );
+	const edited = editedLine( rule );
 
 	// Move focus into the row as soon as it opens.
 	useEffect( () => {
@@ -134,6 +136,10 @@ export default function RuleEditRow( { rule, colSpan, onSave, onCancel } ) {
 							maxLength={ 255 }
 						/>
 					</Field>
+					<div className="adv-redirects-meta adv-redirects-editrow__meta">
+						<span>{ createdLine( rule ) }</span>
+						{ edited && <span>{ edited }</span> }
+					</div>
 					<div className="adv-redirects-editrow__actions">
 						<Button
 							variant="primary"

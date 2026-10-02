@@ -9,6 +9,7 @@ import {
 	trash,
 } from '@wordpress/icons';
 import { isGone } from '../constants';
+import { createdLine, editedLine, VIA_LABELS } from '../utils/attribution';
 import { parseGmt, timeAgo } from '../utils/time';
 import StatusBadge from './StatusBadge';
 
@@ -30,6 +31,7 @@ export default function RuleRow( {
 	editButtonRef,
 } ) {
 	const lastHit = parseGmt( rule.last_hit_at );
+	const viaLabel = VIA_LABELS[ rule.created_via ];
 
 	return (
 		<tr
@@ -110,6 +112,15 @@ export default function RuleRow( {
 				{ rule.note && (
 					<div className="adv-redirects-note">{ rule.note }</div>
 				) }
+				<div
+					className="adv-redirects-meta"
+					title={ editedLine( rule ) || undefined }
+				>
+					<span>{ createdLine( rule ) }</span>
+					{ viaLabel && (
+						<span className="adv-redirects-flag">{ viaLabel }</span>
+					) }
+				</div>
 			</td>
 			<td className="adv-redirects-col-target">
 				{ isGone( rule.status_code ) ? (
@@ -120,7 +131,7 @@ export default function RuleRow( {
 					<code>{ rule.target }</code>
 				) }
 				<div className="adv-redirects-flags">
-					{ rule.origin === 'auto' && (
+					{ rule.origin === 'auto' && rule.created_via !== 'slug' && (
 						<span className="adv-redirects-flag">
 							{ __( 'Auto', 'wp-redirects' ) }
 						</span>

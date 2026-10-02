@@ -367,6 +367,26 @@
 	font-size: 12px;
 }
 
+.adv-redirects-meta {
+	align-items: center;
+	color: var(--adv-muted);
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 12px;
+	gap: 4px 6px;
+	margin-top: 4px;
+}
+
+.adv-redirects-meta .adv-redirects-flag {
+	color: #1d2327;
+}
+
+.adv-redirects-editrow__meta {
+	column-gap: 12px;
+	grid-column: 1 / -1;
+	margin-top: 0;
+}
+
 .adv-redirects-flags {
 	align-items: center;
 	display: flex;

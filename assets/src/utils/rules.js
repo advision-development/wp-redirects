@@ -16,9 +16,13 @@ function matchesSearch( rule, search ) {
 	if ( ! query ) {
 		return true;
 	}
-	return [ rule.source, rule.target || '', rule.note || '' ].some(
-		( value ) => value.toLowerCase().includes( query )
-	);
+	return [
+		rule.source,
+		rule.target || '',
+		rule.note || '',
+		rule.created_by_name || '',
+		rule.updated_by_name || '',
+	].some( ( value ) => value.toLowerCase().includes( query ) );
 }
 
 export function filterRules( rules, filters = DEFAULT_FILTERS ) {

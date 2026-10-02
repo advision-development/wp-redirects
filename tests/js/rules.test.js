@@ -91,6 +91,25 @@ describe( 'filterRules', () => {
 			)
 		).toEqual( [ 3 ] );
 	} );
+	it( 'searches the creator and last editor, ignoring missing names', () => {
+		const attributed = [
+			{ ...rules[ 0 ], created_by_name: 'Ivan.Morales' },
+			{ ...rules[ 1 ], updated_by_name: 'sam' },
+			{ ...rules[ 2 ], created_by_name: null },
+		];
+		expect(
+			filterRules( attributed, {
+				...DEFAULT_FILTERS,
+				search: 'ivan',
+			} ).map( ( r ) => r.id )
+		).toEqual( [ 1 ] );
+		expect(
+			filterRules( attributed, {
+				...DEFAULT_FILTERS,
+				search: 'SAM',
+			} ).map( ( r ) => r.id )
+		).toEqual( [ 2 ] );
+	} );
 	it( 'filters by status, enabled and origin', () => {
 		expect(
 			filterRules( rules, { ...DEFAULT_FILTERS, status: '302' } ).map(
