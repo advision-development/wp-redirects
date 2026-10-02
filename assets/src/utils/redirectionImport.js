@@ -256,8 +256,7 @@ export function stripExport( data ) {
 
 /**
  * True when the server (or a proxy in front of it) refused the request body as
- * too large. apiFetch turns a request that got no response at all (the
- * TypeError a connection reset raises) into a `fetch_error`.
+ * too large.
  *
  * @param {Object|null} error What apiFetch rejected with.
  * @return {boolean} Whether the upload was too large.
@@ -269,19 +268,39 @@ export function isTooLarge( error ) {
 	return (
 		error.status === 413 ||
 		( error.data && error.data.status === 413 ) ||
-		error.code === 'rest_request_too_large' ||
-		error.code === 'fetch_error' ||
-		error instanceof TypeError
+		error.code === 'rest_request_too_large'
 	);
 }
 
+/**
+ * True when the request got no response at all. apiFetch turns the TypeError
+ * a dropped connection raises into a `fetch_error`. Some servers reset the
+ * connection instead of answering 413, so this can also mean "too large".
+ *
+ * @param {Object|null} error What apiFetch rejected with.
+ * @return {boolean} Whether no response arrived.
+ */
+export function isNoResponse( error ) {
+	if ( ! error ) {
+		return false;
+	}
+	return error.code === 'fetch_error' || error instanceof TypeError;
+}
+
 export function importErrorMessage( error ) {
-	return isTooLarge( error )
-		? __(
-				'The server rejected the upload as too large. Split the export into smaller files and import them one at a time.',
-				'wp-redirects'
-			)
-		: errorMessage( error );
+	if ( isTooLarge( error ) ) {
+		return __(
+			'The server rejected the upload as too large. Split the export into smaller files and import them one at a time.',
+			'wp-redirects'
+		);
+	}
+	if ( isNoResponse( error ) ) {
+		return __(
+			'The server did not respond. Check your connection and try again. If it keeps failing, the file may be too large for the server: split the export into smaller files and import them one at a time.',
+			'wp-redirects'
+		);
+	}
+	return errorMessage( error );
 }
 
 export function chunk( items, size ) {

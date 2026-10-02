@@ -6,6 +6,7 @@ import {
 	groupPreview,
 	importableEntries,
 	importErrorMessage,
+	isNoResponse,
 	isTooLarge,
 	NOTE_LABELS,
 	stripExport,
@@ -236,19 +237,39 @@ describe( 'stripExport', () => {
 describe( 'upload size errors', () => {
 	const TOO_LARGE =
 		'The server rejected the upload as too large. Split the export into smaller files and import them one at a time.';
+	const NO_RESPONSE =
+		'The server did not respond. Check your connection and try again. If it keeps failing, the file may be too large for the server: split the export into smaller files and import them one at a time.';
 
 	it( 'recognises a refused body', () => {
 		expect( isTooLarge( { status: 413 } ) ).toBe( true );
 		expect( isTooLarge( { data: { status: 413 } } ) ).toBe( true );
 		expect( isTooLarge( { code: 'rest_request_too_large' } ) ).toBe( true );
-		expect( isTooLarge( { code: 'fetch_error' } ) ).toBe( true );
-		expect( isTooLarge( new TypeError( 'Failed to fetch' ) ) ).toBe( true );
+		expect( isTooLarge( { code: 'fetch_error' } ) ).toBe( false );
+		expect( isTooLarge( new TypeError( 'Failed to fetch' ) ) ).toBe(
+			false
+		);
 		expect( isTooLarge( { code: 'rest_forbidden' } ) ).toBe( false );
 		expect( isTooLarge( null ) ).toBe( false );
 	} );
 
-	it( 'maps them to the split-the-file message, others to their own', () => {
+	it( 'recognises a request that got no response', () => {
+		expect( isNoResponse( { code: 'fetch_error' } ) ).toBe( true );
+		expect( isNoResponse( new TypeError( 'Failed to fetch' ) ) ).toBe(
+			true
+		);
+		expect( isNoResponse( { status: 413 } ) ).toBe( false );
+		expect( isNoResponse( { code: 'rest_forbidden' } ) ).toBe( false );
+		expect( isNoResponse( null ) ).toBe( false );
+	} );
+
+	it( 'maps each to its own message, others to their own', () => {
 		expect( importErrorMessage( { status: 413 } ) ).toBe( TOO_LARGE );
+		expect( importErrorMessage( { code: 'fetch_error' } ) ).toBe(
+			NO_RESPONSE
+		);
+		expect( importErrorMessage( new TypeError( 'Failed to fetch' ) ) ).toBe(
+			NO_RESPONSE
+		);
 		expect(
 			importErrorMessage( { code: 'x', message: 'Not allowed.' } )
 		).toBe( 'Not allowed.' );
