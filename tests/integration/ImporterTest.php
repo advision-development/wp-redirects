@@ -120,6 +120,33 @@ final class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( 5, $after->hits );
 	}
 
+	public function test_imported_rules_are_attributed_to_the_import(): void {
+		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $admin );
+		$this->importer->import( $this->export['redirects'], $this->export['groups'] );
+
+		$rule = $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/fx-old-page' ) );
+		$this->assertSame( 'import', $rule->created_via );
+		$this->assertSame( $admin, $rule->created_by );
+		$this->assertNull( $rule->updated_by );
+	}
+
+	public function test_overwrite_keeps_the_original_attribution_and_records_the_editor(): void {
+		$creator = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		$editor  = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $creator );
+		$existing = $this->repo->insert( [ 'type' => 'exact', 'source' => '/fx-old-page', 'target' => '/somewhere-else', 'status_code' => 302 ] );
+
+		wp_set_current_user( $editor );
+		$this->importer->import( [ $this->export['redirects'][0] ], $this->export['groups'] );
+
+		$after = $this->repo->find( $existing->id );
+		$this->assertSame( '/fx-new-page/', $after->target );
+		$this->assertSame( 'manual', $after->created_via );
+		$this->assertSame( $creator, $after->created_by );
+		$this->assertSame( $editor, $after->updated_by );
+	}
+
 	public function test_filter_can_skip_or_change_rules_and_action_fires(): void {
 		add_filter(
 			'adv_redirects_import_rule',

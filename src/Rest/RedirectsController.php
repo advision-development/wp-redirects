@@ -27,6 +27,13 @@ final class RedirectsController extends BaseController {
 	private RuleCache $cache;
 	private ChainResolver $chains;
 
+	/**
+	 * User ID => display name, so a list response resolves each user once.
+	 *
+	 * @var array<int,string>
+	 */
+	private array $user_names = [];
+
 	public function __construct( Repository $repository, Validator $validator, RuleCache $cache, ChainResolver $chains ) {
 		$this->repository = $repository;
 		$this->validator  = $validator;
@@ -115,8 +122,9 @@ final class RedirectsController extends BaseController {
 	}
 
 	public function list_items(): \WP_REST_Response {
-		$ruleset = $this->cache->get();
-		$items   = array_map(
+		$this->user_names = [];
+		$ruleset          = $this->cache->get();
+		$items            = array_map(
 			function ( Rule $rule ) use ( $ruleset ): array {
 				return $this->prepare( $rule, $ruleset );
 			},
@@ -139,7 +147,7 @@ final class RedirectsController extends BaseController {
 			return $result;
 		}
 
-		$rule = $this->repository->insert( $result['data'] );
+		$rule = $this->repository->insert( $result['data'] + [ 'created_via' => 'manual' ] );
 		if ( null === $rule ) {
 			return self::db_error();
 		}
@@ -272,8 +280,10 @@ final class RedirectsController extends BaseController {
 	}
 
 	private function prepare( Rule $rule, array $ruleset ): array {
-		$data          = $rule->to_array();
-		$data['chain'] = null;
+		$data                    = $rule->to_array();
+		$data['created_by_name'] = $this->user_name( $rule->created_by );
+		$data['updated_by_name'] = $this->user_name( $rule->updated_by );
+		$data['chain']           = null;
 
 		$skip = null === $rule->target || ( 'regex' === $rule->type && preg_match( '/\$[1-9]/', $rule->target ) );
 		if ( $rule->enabled && ! $skip ) {
@@ -295,6 +305,20 @@ final class RedirectsController extends BaseController {
 			}
 		}
 		return $data;
+	}
+
+	/**
+	 * The login of a user, "Deleted user" when the account is gone, or null when no user was recorded.
+	 */
+	private function user_name( ?int $user_id ): ?string {
+		if ( null === $user_id ) {
+			return null;
+		}
+		if ( ! isset( $this->user_names[ $user_id ] ) ) {
+			$user                         = get_userdata( $user_id );
+			$this->user_names[ $user_id ] = false === $user ? __( 'Deleted user', 'wp-redirects' ) : $user->user_login;
+		}
+		return $this->user_names[ $user_id ];
 	}
 
 	private function rule_args( bool $create ): array {

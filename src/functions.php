@@ -23,7 +23,7 @@ if ( ! function_exists( 'adv_redirects_add' ) ) {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
-		$rule = $plugin->repository()->insert( $result['data'] );
+		$rule = $plugin->repository()->insert( $result['data'] + [ 'created_via' => 'api' ] );
 		if ( null === $rule ) {
 			return new WP_Error( 'adv_redirects_db_error', __( 'The redirect could not be saved.', 'wp-redirects' ) );
 		}

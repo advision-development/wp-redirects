@@ -70,6 +70,44 @@ final class RestRedirectsTest extends Adv_Redirects_Rest_TestCase {
 		$this->assertSame( 'adv_redirects_unknown_field', $response->get_data()['code'] );
 	}
 
+	public function test_rules_carry_attribution(): void {
+		$admin = get_userdata( self::$admin_id );
+		$data  = $this->create( [ 'type' => 'exact', 'source' => '/attr', 'target' => '/b', 'status_code' => 301 ] )->get_data()['rule'];
+		$this->assertSame( $admin->user_login, $data['created_by_name'] );
+		$this->assertSame( self::$admin_id, $data['created_by'] );
+		$this->assertSame( 'manual', $data['created_via'] );
+		$this->assertNull( $data['updated_by_name'] );
+
+		$other = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $other );
+		$updated = $this->rest( 'PUT', '/redirects/' . $data['id'], [ 'note' => 'edited' ] )->get_data()['rule'];
+		$this->assertSame( get_userdata( $other )->user_login, $updated['updated_by_name'] );
+		$this->assertSame( $admin->user_login, $updated['created_by_name'] );
+
+		$list = $this->rest( 'GET', '/redirects' )->get_data();
+		$this->assertSame( get_userdata( $other )->user_login, $list[0]['updated_by_name'] );
+	}
+
+	public function test_rule_whose_creator_was_deleted_says_deleted_user(): void {
+		$temp = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $temp );
+		$id = $this->create( [ 'type' => 'exact', 'source' => '/orphan', 'target' => '/b', 'status_code' => 301 ] )->get_data()['rule']['id'];
+
+		require_once ABSPATH . 'wp-admin/includes/user.php';
+		wp_delete_user( $temp );
+		wp_set_current_user( self::$admin_id );
+
+		$list = $this->rest( 'GET', '/redirects' )->get_data();
+		$rule = current( wp_list_filter( $list, [ 'id' => $id ] ) );
+		$this->assertSame( 'Deleted user', $rule['created_by_name'] );
+	}
+
+	public function test_created_via_is_not_accepted_from_the_request(): void {
+		$response = $this->create( [ 'type' => 'exact', 'source' => '/a', 'target' => '/b', 'status_code' => 301, 'created_via' => 'import' ] );
+		$this->assertSame( 400, $response->get_status() );
+		$this->assertSame( 'adv_redirects_unknown_field', $response->get_data()['code'] );
+	}
+
 	public function test_validator_errors_surface_with_codes(): void {
 		$this->create( [ 'type' => 'exact', 'source' => '/a', 'target' => '/b', 'status_code' => 301 ] );
 

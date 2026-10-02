@@ -236,7 +236,10 @@ final class Importer {
 			}
 
 			$data = $result['data'] + [ 'origin' => self::origin( $item['rule'] ) ];
-			$rule = null !== $existing ? $this->repository->update( $existing->id, $data ) : $this->repository->insert( $data );
+			// An overwrite keeps the rule's original creator and method; only a new rule is marked as imported.
+			$rule = null !== $existing
+				? $this->repository->update( $existing->id, $data )
+				: $this->repository->insert( $data + [ 'created_via' => 'import' ] );
 			if ( null === $rule ) {
 				$entry['error'] = [
 					'code'    => 'adv_redirects_db_error',

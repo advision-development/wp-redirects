@@ -34,6 +34,17 @@ final class SlugWatcherTest extends WP_UnitTestCase {
 		$this->assertSame( 'Slug changed on post #' . $post_id, $rule->note );
 	}
 
+	public function test_auto_redirect_is_attributed_to_the_slug_change_and_its_user(): void {
+		$admin = self::factory()->user->create( [ 'role' => 'administrator' ] );
+		wp_set_current_user( $admin );
+		$post_id = self::factory()->post->create( [ 'post_name' => 'who', 'post_status' => 'publish' ] );
+		wp_update_post( [ 'ID' => $post_id, 'post_name' => 'who-new' ] );
+
+		$rule = $this->rule_for( '/who/' );
+		$this->assertSame( 'slug', $rule->created_via );
+		$this->assertSame( $admin, $rule->created_by );
+	}
+
 	public function test_page_rename_covers_descendants(): void {
 		$parent = self::factory()->post->create( [ 'post_type' => 'page', 'post_name' => 'parent', 'post_status' => 'publish' ] );
 		self::factory()->post->create( [ 'post_type' => 'page', 'post_name' => 'child', 'post_parent' => $parent, 'post_status' => 'publish' ] );

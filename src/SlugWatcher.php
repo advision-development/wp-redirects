@@ -148,7 +148,12 @@ final class SlugWatcher {
 			return;
 		}
 
-		$rule = $this->repository->insert( $result['data'] + [ 'origin' => 'auto' ] );
+		$rule = $this->repository->insert(
+			$result['data'] + [
+				'origin'      => 'auto',
+				'created_via' => 'slug',
+			]
+		);
 		if ( null !== $rule ) {
 			/**
 			 * Fires after the slug watcher creates a redirect.

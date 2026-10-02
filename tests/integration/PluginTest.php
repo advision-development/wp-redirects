@@ -36,6 +36,7 @@ final class PluginTest extends WP_UnitTestCase {
 		$rule = adv_redirects_add( [ 'type' => 'exact', 'source' => '/api-old', 'target' => '/api-new', 'status_code' => 302 ] );
 		$this->assertIsArray( $rule );
 		$this->assertSame( '/api-old', $rule['source'] );
+		$this->assertSame( 'api', $rule['created_via'] );
 
 		$this->assertWPError( adv_redirects_add( [ 'type' => 'exact', 'source' => '/api-old', 'target' => '/x', 'status_code' => 301 ] ) );
 
