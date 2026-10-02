@@ -1,4 +1,4 @@
-import { SnackbarList, Spinner } from '@wordpress/components';
+import { Button, Notice, SnackbarList, Spinner } from '@wordpress/components';
 import { useCallback, useEffect, useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { api } from '../api';
@@ -10,20 +10,26 @@ import RedirectsTab from './RedirectsTab';
 import SettingsTab from './SettingsTab';
 import Tabs from './Tabs';
 
+const PANEL_ID = 'adv-redirects-panel';
+
 export default function App() {
 	const { notices, notify, dismiss } = useNotices();
 	const redirects = useRedirects( notify );
 	const [ tab, setTab ] = useState( 'redirects' );
 	const [ prefill, setPrefill ] = useState( null );
 	const [ settings, setSettings ] = useState( null );
+	const [ settingsError, setSettingsError ] = useState( '' );
 
-	useEffect( () => {
+	const loadSettings = useCallback( () => {
+		setSettingsError( '' );
 		api.getSettings()
 			.then( setSettings )
-			.catch( ( error ) =>
-				notify( { status: 'error', message: errorMessage( error ) } )
-			);
-	}, [ notify ] );
+			.catch( ( error ) => setSettingsError( errorMessage( error ) ) );
+	}, [] );
+
+	useEffect( () => {
+		loadSettings();
+	}, [ loadSettings ] );
 
 	const clearPrefill = useCallback( () => setPrefill( null ), [] );
 	const createFrom404 = useCallback( ( path ) => {
@@ -46,10 +52,15 @@ export default function App() {
 			<header className="adv-redirects__header">
 				<h1>{ __( 'Redirects', 'wp-redirects' ) }</h1>
 			</header>
-			<Tabs tabs={ tabs } selected={ tab } onSelect={ setTab } />
+			<Tabs
+				tabs={ tabs }
+				selected={ tab }
+				onSelect={ setTab }
+				panelId={ PANEL_ID }
+			/>
 			<div
 				role="tabpanel"
-				id={ `adv-redirects-panel-${ tab }` }
+				id={ PANEL_ID }
 				aria-labelledby={ `adv-redirects-tab-${ tab }` }
 				className="adv-redirects__panel"
 			>
@@ -69,18 +80,26 @@ export default function App() {
 						onOpenSettings={ () => setTab( 'settings' ) }
 					/>
 				) }
-				{ tab === 'settings' &&
-					( settings ? (
-						<SettingsTab
-							settings={ settings }
-							onSaved={ setSettings }
-							notify={ notify }
-						/>
-					) : (
-						<div className="adv-redirects-loading">
-							<Spinner />
-						</div>
-					) ) }
+				{ tab === 'settings' && settings && (
+					<SettingsTab
+						settings={ settings }
+						onSaved={ setSettings }
+						notify={ notify }
+					/>
+				) }
+				{ tab === 'settings' && ! settings && settingsError && (
+					<Notice status="error" isDismissible={ false }>
+						{ settingsError }{ ' ' }
+						<Button variant="link" onClick={ loadSettings }>
+							{ __( 'Try again', 'wp-redirects' ) }
+						</Button>
+					</Notice>
+				) }
+				{ tab === 'settings' && ! settings && ! settingsError && (
+					<div className="adv-redirects-loading">
+						<Spinner />
+					</div>
+				) }
 			</div>
 			<SnackbarList
 				notices={ notices }

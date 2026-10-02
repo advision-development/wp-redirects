@@ -1,7 +1,7 @@
 import { useRef } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 
-export default function Tabs( { tabs, selected, onSelect } ) {
+export default function Tabs( { tabs, selected, onSelect, panelId } ) {
 	const refs = useRef( {} );
 
 	const onKeyDown = ( event, index ) => {
@@ -35,7 +35,10 @@ export default function Tabs( { tabs, selected, onSelect } ) {
 					type="button"
 					role="tab"
 					id={ `adv-redirects-tab-${ tab.name }` }
-					aria-controls={ `adv-redirects-panel-${ tab.name }` }
+					/* Only the selected tab's panel is rendered. */
+					aria-controls={
+						selected === tab.name ? panelId : undefined
+					}
 					aria-selected={ selected === tab.name }
 					tabIndex={ selected === tab.name ? 0 : -1 }
 					className={ `adv-redirects-tabs__tab${ selected === tab.name ? ' is-active' : '' }` }

@@ -1,6 +1,6 @@
 import { Button, SelectControl, TextControl } from '@wordpress/components';
-import { useState } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import { useEffect, useRef, useState } from '@wordpress/element';
+import { __, sprintf } from '@wordpress/i18n';
 import {
 	errorMessage,
 	fieldForError,
@@ -18,10 +18,22 @@ export default function RuleEditRow( { rule, colSpan, onSave, onCancel } ) {
 	} );
 	const [ errors, setErrors ] = useState( {} );
 	const [ busy, setBusy ] = useState( false );
+	const sourceRef = useRef();
 	const gone = isGone( values.status_code );
 
-	const set = ( key ) => ( value ) =>
+	// Move focus into the row as soon as it opens.
+	useEffect( () => {
+		sourceRef.current?.focus();
+	}, [] );
+
+	const set = ( key ) => ( value ) => {
 		setValues( ( current ) => ( { ...current, [ key ]: value } ) );
+		setErrors( ( current ) => ( {
+			...current,
+			[ key ]: undefined,
+			form: undefined,
+		} ) );
+	};
 
 	const save = async ( event ) => {
 		event.preventDefault();
@@ -40,50 +52,74 @@ export default function RuleEditRow( { rule, colSpan, onSave, onCancel } ) {
 		}
 	};
 
+	const onKeyDown = ( event ) => {
+		// Escape cancels the edit, except where a native select uses it to
+		// close its own list.
+		if ( event.key === 'Escape' && event.target.tagName !== 'SELECT' ) {
+			event.preventDefault();
+			onCancel();
+		}
+	};
+
 	return (
 		<tr className="adv-redirects-editrow">
 			<td colSpan={ colSpan }>
-				{ /* Escape cancels the inline edit from any field in the row. */ }
 				{ /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */ }
 				<form
 					className="adv-redirects-editrow__form"
 					onSubmit={ save }
-					onKeyDown={ ( event ) =>
-						event.key === 'Escape' && onCancel()
-					}
+					onKeyDown={ onKeyDown }
+					aria-label={ sprintf(
+						/* translators: %s: redirect source */
+						__( 'Edit redirect %s', 'wp-redirects' ),
+						rule.source
+					) }
 				>
 					<Field error={ errors.source }>
-						<TextControl
-							__nextHasNoMarginBottom
-							__next40pxDefaultSize
-							label={ __( 'Edit source', 'wp-redirects' ) }
-							value={ values.source }
-							onChange={ set( 'source' ) }
-						/>
-					</Field>
-					{ ! gone && (
-						<Field error={ errors.target }>
+						{ ( fieldProps ) => (
 							<TextControl
 								__nextHasNoMarginBottom
 								__next40pxDefaultSize
-								label={ __( 'Edit target', 'wp-redirects' ) }
-								value={ values.target }
-								onChange={ set( 'target' ) }
+								{ ...fieldProps }
+								ref={ sourceRef }
+								label={ __( 'Edit source', 'wp-redirects' ) }
+								value={ values.source }
+								onChange={ set( 'source' ) }
 							/>
+						) }
+					</Field>
+					{ ! gone && (
+						<Field error={ errors.target }>
+							{ ( fieldProps ) => (
+								<TextControl
+									__nextHasNoMarginBottom
+									__next40pxDefaultSize
+									{ ...fieldProps }
+									label={ __(
+										'Edit target',
+										'wp-redirects'
+									) }
+									value={ values.target }
+									onChange={ set( 'target' ) }
+								/>
+							) }
 						</Field>
 					) }
-					<Field error={ errors.status_code }>
-						<SelectControl
-							__nextHasNoMarginBottom
-							__next40pxDefaultSize
-							label={ __( 'Edit status', 'wp-redirects' ) }
-							value={ values.status_code }
-							options={ STATUS_OPTIONS.map( ( option ) => ( {
-								value: String( option.value ),
-								label: option.label,
-							} ) ) }
-							onChange={ set( 'status_code' ) }
-						/>
+					<Field error={ errors.status_code } control="select">
+						{ ( fieldProps ) => (
+							<SelectControl
+								__nextHasNoMarginBottom
+								__next40pxDefaultSize
+								{ ...fieldProps }
+								label={ __( 'Edit status', 'wp-redirects' ) }
+								value={ values.status_code }
+								options={ STATUS_OPTIONS.map( ( option ) => ( {
+									value: String( option.value ),
+									label: option.label,
+								} ) ) }
+								onChange={ set( 'status_code' ) }
+							/>
+						) }
 					</Field>
 					<Field>
 						<TextControl

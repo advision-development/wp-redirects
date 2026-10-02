@@ -15,11 +15,13 @@ const EMPTY = { type: 'exact', source: '', target: '', status_code: '301' };
 export function previewRegex( pattern, path ) {
 	try {
 		return new RegExp( pattern, 'i' ).test( path )
-			? /* translators: %s: path */ sprintf(
+			? sprintf(
+					/* translators: %s: path */
 					__( 'Matches "%s" (browser preview)', 'wp-redirects' ),
 					path
 				)
-			: /* translators: %s: path */ sprintf(
+			: sprintf(
+					/* translators: %s: path */
 					__(
 						'Does not match "%s" (browser preview)',
 						'wp-redirects'
@@ -94,6 +96,10 @@ export default function QuickAddForm( {
 
 	const gone = isGone( values.status_code );
 	const isRegex = values.type === 'regex';
+	const sourceHelp =
+		isRegex && values.source && testPath
+			? previewRegex( values.source, testPath )
+			: undefined;
 
 	const submit = async ( event ) => {
 		event.preventDefault();
@@ -133,55 +139,64 @@ export default function QuickAddForm( {
 			<TypeToggle value={ values.type } onChange={ set( 'type' ) } />
 			<Field
 				error={ errors.source }
+				hasHelp={ Boolean( sourceHelp ) }
 				className="adv-redirects-quickadd__source"
 			>
-				<TextControl
-					__nextHasNoMarginBottom
-					__next40pxDefaultSize
-					ref={ sourceRef }
-					label={ __( 'Source', 'wp-redirects' ) }
-					placeholder={ isRegex ? '^/blog/(\\d+)/?$' : '/old-page' }
-					value={ values.source }
-					onChange={ set( 'source' ) }
-					help={
-						isRegex && values.source && testPath
-							? previewRegex( values.source, testPath )
-							: undefined
-					}
-					required
-				/>
+				{ ( fieldProps ) => (
+					<TextControl
+						__nextHasNoMarginBottom
+						__next40pxDefaultSize
+						{ ...fieldProps }
+						ref={ sourceRef }
+						label={ __( 'Source', 'wp-redirects' ) }
+						placeholder={
+							isRegex ? '^/blog/(\\d+)/?$' : '/old-page'
+						}
+						value={ values.source }
+						onChange={ set( 'source' ) }
+						help={ sourceHelp }
+						required
+					/>
+				) }
 			</Field>
 			{ ! gone && (
 				<Field
 					error={ errors.target }
 					className="adv-redirects-quickadd__target"
 				>
-					<TextControl
-						__nextHasNoMarginBottom
-						__next40pxDefaultSize
-						label={ __( 'Target', 'wp-redirects' ) }
-						placeholder={ isRegex ? '/news/$1' : '/new-page' }
-						value={ values.target }
-						onChange={ set( 'target' ) }
-						required
-					/>
+					{ ( fieldProps ) => (
+						<TextControl
+							__nextHasNoMarginBottom
+							__next40pxDefaultSize
+							{ ...fieldProps }
+							label={ __( 'Target', 'wp-redirects' ) }
+							placeholder={ isRegex ? '/news/$1' : '/new-page' }
+							value={ values.target }
+							onChange={ set( 'target' ) }
+							required
+						/>
+					) }
 				</Field>
 			) }
 			<Field
 				error={ errors.status_code }
+				control="select"
 				className="adv-redirects-quickadd__status"
 			>
-				<SelectControl
-					__nextHasNoMarginBottom
-					__next40pxDefaultSize
-					label={ __( 'Status', 'wp-redirects' ) }
-					value={ values.status_code }
-					options={ STATUS_OPTIONS.map( ( option ) => ( {
-						value: String( option.value ),
-						label: option.label,
-					} ) ) }
-					onChange={ set( 'status_code' ) }
-				/>
+				{ ( fieldProps ) => (
+					<SelectControl
+						__nextHasNoMarginBottom
+						__next40pxDefaultSize
+						{ ...fieldProps }
+						label={ __( 'Status', 'wp-redirects' ) }
+						value={ values.status_code }
+						options={ STATUS_OPTIONS.map( ( option ) => ( {
+							value: String( option.value ),
+							label: option.label,
+						} ) ) }
+						onChange={ set( 'status_code' ) }
+					/>
+				) }
 			</Field>
 			<Button
 				variant="primary"
