@@ -1,0 +1,31 @@
+{
+	"name": "advision-development/wp-redirects",
+	"description": "Redirect manager for WordPress: exact and regex redirects, object-cached matching, 404 log.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": ">=7.4",
+		"yahnis-elsts/plugin-update-checker": "^5.6"
+	},
+	"config": {
+		"platform": {
+			"php": "7.4.33"
+		},
+		"sort-packages": true,
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"lint": "phpcs",
+		"fix": "phpcbf",
+		"test:unit": "phpunit -c phpunit.unit.xml.dist"
+	},
+	"require-dev": {
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+		"phpcompatibility/phpcompatibility-wp": "^2.1",
+		"phpunit/phpunit": "^9.6",
+		"wp-coding-standards/wpcs": "^3.1",
+		"yoast/phpunit-polyfills": "^1.1 || ^2.0"
+	}
+}

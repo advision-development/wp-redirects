@@ -45,8 +45,8 @@ A WordPress redirect manager comparable to Yoast SEO Premium's redirect feature,
 ## 3. Compatibility
 
 - **PHP 7.4+** (tested on 7.4, 8.2, 8.3). No PHP 8-only syntax: no `match`, constructor promotion, union types, named arguments, `mixed`, nullsafe operator. Typed properties and arrow functions are allowed. `str_contains`/`str_starts_with` are fine (WP polyfills since 5.9).
-- **WordPress 6.4+** (tested on 6.4 and latest, currently 7.1). The admin app uses the site's own `wp-element`/`wp-components`/`wp-api-fetch`, so it uses only component APIs stable since 6.4.
-- Plugin header: `Requires at least: 6.4`, `Requires PHP: 7.4`.
+- **WordPress 6.6+** (tested on 6.6 and latest, currently 7.1). 6.6 is the first release that registers the `react-jsx-runtime` script current `@wordpress/scripts` builds depend on. The admin app uses the site's own `wp-element`/`wp-components`/`wp-api-fetch`, so it uses only component APIs stable since 6.6.
+- Plugin header: `Requires at least: 6.6`, `Requires PHP: 7.4`.
 
 ## 4. Naming
 
@@ -431,7 +431,7 @@ All hooks are documented with docblocks in code and in `docs/hooks.md`.
 - **CI** (`.github/workflows/ci.yml`, on push/PR):
   - PHP lint and PHPCS
   - PHPUnit unit tests on PHP 7.4 / 8.2 / 8.3
-  - integration tests via `wp-env` on WP 6.4 and latest
+  - integration tests via `wp-env` on WP 6.6 and latest
   - `npm ci`, ESLint, Jest, `npm run build`
   - Playwright smoke test
   - `composer audit`, `npm audit --omit=dev`
@@ -461,3 +461,12 @@ All hooks are documented with docblocks in code and in `docs/hooks.md`.
   - 410/451 status + template
 - **JS** (Jest): state reducer, filtering/sorting utils, optimistic update rollback.
 - **E2E** (Playwright, `@wordpress/e2e-test-utils-playwright`): add an exact rule → Test URL shows the match → visiting the source redirects with the chosen status.
+
+## 16. Amendments (implementation planning, 2026-10-02)
+
+1. Minimum WordPress is 6.6 (see §3).
+2. Reserved sources: exact sources whose path is or starts with `/wp-admin`, `/wp-login.php`, `/xmlrpc.php`, `/wp-cron.php` or `/<rest prefix>` are rejected with `adv_redirects_reserved_source` (422). The Redirector also never handles these paths.
+3. Regex captures are URL-encoded per path segment (`/` kept) before `$n` substitution.
+4. The slug watcher captures descendant permalinks before the update (in `pre_post_update`) instead of deriving them by prefix replacement.
+5. Additional units: `Matching/UrlSafety`, `Matching/Pattern`, `Matching/RulesetCompiler`, `Redirects/ChainResolver`, `Site`, `Permissions`, `Uninstaller`, `Rest/BaseController`.
+6. Bulk enable re-validates each rule. Rules that would create a loop are left disabled and returned in `skipped`.
