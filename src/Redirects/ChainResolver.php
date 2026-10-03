@@ -58,8 +58,9 @@ final class ChainResolver {
 			}
 
 			// The redirector never redirects a URL to itself, so the chain ends here and is not a loop.
-			$next_internal = Site::internal_path( $next );
-			if ( null !== $next_internal && TargetResolver::is_self( $next_internal, '', $request['path'], $request['query'] ) ) {
+			// Same check as the runtime: the hop made absolute the way TargetResolver::resolve() does,
+			// compared with the exact home URL (scheme, host case and port included).
+			if ( TargetResolver::is_self( self::absolute( $next ), Site::home_url(), $request['path'], $request['query'] ) ) {
 				return self::result( false, $hops, $current );
 			}
 
@@ -74,6 +75,13 @@ final class ChainResolver {
 		}
 
 		return self::result( true, $hops, $current );
+	}
+
+	/**
+	 * A hop as the runtime sends it: a relative target gets the home URL in front.
+	 */
+	private static function absolute( string $url ): string {
+		return '' !== $url && '/' === $url[0] && 0 !== strpos( $url, '//' ) ? Site::home_url() . $url : $url;
 	}
 
 	private static function result( bool $loop, array $hops, string $final_url ): array {

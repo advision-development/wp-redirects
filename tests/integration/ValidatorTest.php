@@ -141,6 +141,18 @@ final class ValidatorTest extends WP_UnitTestCase {
 		$this->valid( [ 'type' => 'regex', 'source' => '^/foo$', 'target' => '/foo', 'status_code' => 301 ] );
 	}
 
+	public function test_self_check_in_the_walk_uses_the_exact_home_url_like_the_runtime(): void {
+		// Home is http://example.org. The runtime compares the absolute target with that exact string,
+		// so an https target for the same path is not "self" and keeps redirecting: a loop.
+		$result = $this->validator->validate( [ 'type' => 'regex', 'source' => '^/zz-self$', 'target' => 'https://example.org/zz-self', 'status_code' => 301 ] );
+		$this->assertWPError( $result );
+		$this->assertSame( 'adv_redirects_loop', $result->get_error_code() );
+
+		// The same target written relative, or with the home URL itself, is "self": the chain ends.
+		$this->valid( [ 'type' => 'regex', 'source' => '^/zz-rel$', 'target' => '/zz-rel', 'status_code' => 301 ] );
+		$this->valid( [ 'type' => 'regex', 'source' => '^/zz-abs$', 'target' => 'http://example.org/zz-abs', 'status_code' => 301 ] );
+	}
+
 	public function test_chain_into_a_self_redirect_is_not_a_loop(): void {
 		$this->save( [ 'type' => 'regex', 'source' => '^/odds/(.*)', 'target' => '/odds/$1', 'status_code' => 301 ] );
 		$result = $this->valid( [ 'type' => 'exact', 'source' => '/props', 'target' => '/odds/', 'status_code' => 301 ] );
