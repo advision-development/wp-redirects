@@ -39,6 +39,12 @@ final class YoastMapper {
 			return self::skip( $source_id, 'unreachable_regex' );
 		}
 
+		// Yoast matched regex case-sensitively and WP Redirects ignores case, so a pattern with a
+		// literal capital letter would also catch the lowercase URLs Yoast never redirected.
+		if ( $regex && self::is_case_dependent( $entry['origin'] ) ) {
+			return self::skip( $source_id, 'case_dependent_regex' );
+		}
+
 		if ( in_array( $status, self::GONE_STATUSES, true ) ) {
 			$target = null;
 		} elseif ( in_array( $status, self::REDIRECT_STATUSES, true ) ) {
@@ -48,6 +54,11 @@ final class YoastMapper {
 			}
 			// Yoast substitutes $0 and $10+; WP Redirects substitutes $1-$9 only.
 			if ( preg_match( '/\$(?:0|[1-9][0-9])/', $url ) ) {
+				return self::skip( $source_id, 'unsupported_capture' );
+			}
+			// "$1/x" becomes "/$1/x". If group 1 starts with "/", that is "//nfl/x": a protocol-relative
+			// URL the host guard rejects, so the redirect would silently stop working.
+			if ( $regex && preg_match( '#^/?\$([1-9])#', $url, $lead ) && self::group_starts_with_slash( $entry['origin'], (int) $lead[1] ) ) {
 				return self::skip( $source_id, 'unsupported_capture' );
 			}
 			$target = self::target( $url, $trailing_slash );
@@ -92,10 +103,11 @@ final class YoastMapper {
 	}
 
 	/**
-	 * Yoast prepends home_url() to a target without a scheme.
+	 * Yoast prepends home_url() to a target without a scheme. A target with any scheme is kept as it
+	 * is; one other than http(s) (mailto:, ftp:, tel:) is then rejected by the Validator.
 	 */
 	private static function target( string $url, bool $trailing_slash ): string {
-		if ( preg_match( '#^https?://#i', $url ) ) {
+		if ( preg_match( '#^[a-z][a-z0-9+.-]*:#i', $url ) ) {
 			return $url;
 		}
 		$target = '/' . ltrim( $url, '/' );
@@ -107,14 +119,58 @@ final class YoastMapper {
 
 	/**
 	 * Mirrors Yoast's runtime rule. A target with a capture is left alone because Yoast adds the
-	 * slash after substitution, and a static one could double it.
+	 * slash after substitution, and a static one could double it. Like Yoast's has_extension(), a
+	 * "." anywhere in the path (not only the last segment, so "/v2.0/page" too) means no slash.
 	 */
 	private static function wants_trailing_slash( string $target ): bool {
 		if ( '/' === substr( $target, -1 ) || preg_match( '/\$[0-9]/', $target ) || false !== strpbrk( $target, '?#' ) ) {
 			return false;
 		}
-		$last = (string) substr( $target, (int) strrpos( $target, '/' ) + 1 );
-		return false === strpos( $last, '.' );
+		return false === strpos( $target, '.' );
+	}
+
+	/**
+	 * Whether a regex has a literal capital letter A-Z outside escape sequences ("\S", "\P{Lu}"),
+	 * character classes ("[A-Z]") and quantifier braces.
+	 */
+	private static function is_case_dependent( string $pattern ): bool {
+		$literal = (string) preg_replace( '/\\\\./s', '', $pattern );
+		$literal = (string) preg_replace( '/\[[^\]]*\]/', '', $literal );
+		$literal = (string) preg_replace( '/\{[^}]*\}/', '', $literal );
+		return 1 === preg_match( '/[A-Z]/', $literal );
+	}
+
+	/**
+	 * Whether capturing group $number of the pattern starts with "/" or "\/". Groups are counted by
+	 * their "(" that are not escaped, not inside a character class and not followed by "?".
+	 */
+	private static function group_starts_with_slash( string $pattern, int $number ): bool {
+		$length = strlen( $pattern );
+		$count  = 0;
+		$class  = false;
+		for ( $i = 0; $i < $length; $i++ ) {
+			$char = $pattern[ $i ];
+			if ( '\\' === $char ) {
+				++$i;
+				continue;
+			}
+			if ( $class ) {
+				$class = ']' !== $char;
+				continue;
+			}
+			if ( '[' === $char ) {
+				$class = true;
+				continue;
+			}
+			if ( '(' !== $char || '?' === substr( $pattern, $i + 1, 1 ) ) {
+				continue;
+			}
+			if ( ++$count === $number ) {
+				$content = (string) substr( $pattern, $i + 1, 2 );
+				return '/' === substr( $content, 0, 1 ) || '\\/' === $content;
+			}
+		}
+		return false;
 	}
 
 	/**

@@ -69,6 +69,46 @@ final class YoastMapperTest extends TestCase {
 		$this->assertSame( '/page#top', $inline( 'page#top' ) );
 		$this->assertSame( '/page?x=1', $inline( 'page?x=1' ) );
 		$this->assertSame( '/', $inline( '/' ) );
+		$this->assertSame( '/v2.0/page', $inline( 'v2.0/page' ), 'Like Yoast, a "." in any segment means no slash.' );
+		$this->assertSame( '/a/b/', $inline( 'a/b' ) );
+	}
+
+	public function test_targets_with_another_scheme_are_kept_unchanged(): void {
+		$inline = static function ( string $url ): ?string {
+			return YoastMapper::map( [ 'id' => 1, 'origin' => 'a', 'url' => $url, 'type' => 301, 'format' => 'plain' ], true )['rule']['target'];
+		};
+		foreach ( [ 'mailto:someone@example.com', 'ftp://files.example.com/a', 'tel:+15551234', 'HTTPS://example.com/a', 'git+ssh://example.com/repo' ] as $url ) {
+			$this->assertSame( $url, $inline( $url ), $url );
+		}
+	}
+
+	public function test_case_dependent_regex_is_skipped(): void {
+		$regex = static function ( string $origin ): array {
+			return YoastMapper::map( [ 'id' => 1, 'origin' => $origin, 'url' => 'betting-odds/$1', 'type' => 301, 'format' => 'regex' ], true );
+		};
+		$this->assertSame( 'case_dependent_regex', $regex( '^/Odds/(.*)' )['error'] );
+		$this->assertSame( 'case_dependent_regex', $regex( '^/odds/(.*)/News' )['error'] );
+		foreach ( [ '^/odds/(\S+)', '^/odds/([A-Z]+)', '^/odds/(\P{Lu}+)', '^/odds/(\p{Lu}+)', '^/odds/[a-z]{2,3}/(.*)', '^/fy-regex/(.*)', '^/odds/\Q.\E(.*)' ] as $origin ) {
+			$mapped = $regex( $origin );
+			$this->assertTrue( $mapped['ok'], $origin );
+			$this->assertContains( 'case_sensitive_source', $mapped['notes'], $origin );
+		}
+	}
+
+	public function test_target_capture_of_a_group_starting_with_a_slash_is_skipped(): void {
+		$regex = static function ( string $origin, string $url ): array {
+			return YoastMapper::map( [ 'id' => 1, 'origin' => $origin, 'url' => $url, 'type' => 301, 'format' => 'regex' ], true );
+		};
+		$this->assertSame( 'unsupported_capture', $regex( '^(/[^/]+)/old', '$1/x' )['error'], '"/$1/x" would become "//nfl/x".' );
+		$this->assertSame( 'unsupported_capture', $regex( '^(/[^/]+)/old', '/$1/x' )['error'] );
+		$this->assertSame( 'unsupported_capture', $regex( '^(\/[^/]+)/old', '$1/x' )['error'] );
+		$this->assertSame( 'unsupported_capture', $regex( '^/(?:a|b)([(])?(/x)', '$2' )['error'], 'Non-capturing groups and parentheses in a class are not counted.' );
+
+		$bmr = $regex( '\/(mlb|nba|nfl)\/future-picks\/', '$1/futures' );
+		$this->assertTrue( $bmr['ok'] );
+		$this->assertSame( '/$1/futures', $bmr['rule']['target'] );
+		$this->assertSame( '/$2/x', $regex( '^(/[^/]+)/(\w+)', '$2/x' )['rule']['target'], 'Group 2 does not start with a slash.' );
+		$this->assertSame( '/odds$1/fy-props/$2', $this->map( 22 )['rule']['target'], 'A target that does not start with a capture is unaffected.' );
 	}
 
 	public function test_regex_rules_and_notes(): void {

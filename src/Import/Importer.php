@@ -298,17 +298,22 @@ final class Importer {
 	}
 
 	/**
-	 * Maps entries, applies the filter and marks in-file duplicates.
+	 * Maps entries (through RedirectionMapper or YoastMapper), applies the filter and marks in-file
+	 * duplicates, the same way for both sources.
 	 *
-	 * Redirection serves the first enabled match in position order, and Yoast holds one entry per
-	 * origin, so among entries with the same conflict key (in the order received, which the client
-	 * sorts by position) the winner is the
-	 * first one that maps and passes the filter and is enabled; if none is enabled, the first one
-	 * that maps. Every other entry with that key is superseded by the winner.
+	 * Entries arrive in the order the source served them: Redirection's position order (the client
+	 * sorts by position) or Yoast's stored order. Among entries with the same conflict key, the winner
+	 * is the first one that maps and passes the filter and is enabled; if none is enabled, the first
+	 * one that maps. Every other entry with that key is superseded by the winner.
+	 *
+	 * - Redirection serves the first enabled match, so that is the entry its site actually used.
+	 * - Every Yoast rule is enabled, so the first mapped entry wins. Yoast keeps one entry per origin,
+	 *   so its duplicates are origins that differ only in case or percent-encoding, which WP Redirects
+	 *   treats as one source.
 	 *
 	 * The winner is chosen before validation. If it later fails validation it is reported as
-	 * skipped and no superseded copy is imported in its place: those copies were never served by
-	 * Redirection, so importing one would add a redirect the site never had.
+	 * skipped and no superseded copy is imported in its place: the source never served those copies
+	 * for that key, so importing one would add a redirect the site never had.
 	 *
 	 * @return array<int,array{source_id:int,source:string,rule:?array,notes:array,error:?string,superseded:bool,superseded_by:?int}>
 	 */
@@ -507,6 +512,7 @@ final class Importer {
 			'filtered'               => __( 'Skipped by the adv_redirects_import_rule filter.', 'wp-redirects' ),
 			'unsupported_capture'    => __( 'Only captures $1 to $9 are supported.', 'wp-redirects' ),
 			'unreachable_regex'      => __( 'Yoast matched regex rules against the path, so a pattern that starts with a URL never matched anything.', 'wp-redirects' ),
+			'case_dependent_regex'   => __( 'Yoast matched this pattern case-sensitively; WP Redirects ignores case, so importing it could redirect other URLs. It stays in Yoast.', 'wp-redirects' ),
 		];
 		return [
 			'code'    => $code,
