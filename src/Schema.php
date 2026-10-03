@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class Schema {
 
-	public const VERSION = '2';
+	public const VERSION = '3';
 
 	public const VERSION_OPTION = 'adv_redirects_db_version';
 
@@ -42,6 +42,7 @@ final class Schema {
   status_code smallint(5) unsigned NOT NULL DEFAULT 301,
   position int(10) unsigned NOT NULL DEFAULT 0,
   enabled tinyint(1) NOT NULL DEFAULT 1,
+  trailing_slash tinyint(1) NOT NULL DEFAULT 0,
   origin varchar(10) NOT NULL DEFAULT 'manual',
   created_by bigint(20) unsigned DEFAULT NULL,
   created_via varchar(10) NOT NULL DEFAULT 'manual',
@@ -77,6 +78,8 @@ final class Schema {
 	public static function maybe_upgrade(): void {
 		if ( self::VERSION !== get_option( self::VERSION_OPTION ) ) {
 			self::install();
+			// The compiled rule set gained fields (v3: trailing_slash); rebuild it from the table.
+			Matching\RuleCache::flush();
 		}
 	}
 

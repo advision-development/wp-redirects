@@ -14,7 +14,8 @@ if ( ! function_exists( 'adv_redirects_add' ) ) {
 	/**
 	 * Creates a redirect using the same validation as the admin and REST API.
 	 *
-	 * @param array $data { type: 'exact'|'regex', source: string, target: ?string, status_code: int, enabled?: bool, note?: string }.
+	 * @param array $data { type: 'exact'|'regex', source: string, target: ?string, status_code: int, enabled?: bool, trailing_slash?: bool, note?: string }.
+	 *                    trailing_slash adds "/" to a relative target after capture substitution (no "." in the path).
 	 * @return array|WP_Error The rule as an array, or the validation error.
 	 */
 	function adv_redirects_add( array $data ) {

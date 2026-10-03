@@ -26,7 +26,7 @@ final class Importer {
 
 	public const SOURCE_YOAST = 'yoast';
 
-	private const RULE_FIELDS = [ 'type', 'source', 'target', 'status_code', 'enabled', 'note' ];
+	private const RULE_FIELDS = [ 'type', 'source', 'target', 'status_code', 'enabled', 'trailing_slash', 'note' ];
 
 	private Repository $repository;
 
@@ -116,13 +116,14 @@ final class Importer {
 			// it). A new rule that is disabled can never matter, so it is left out.
 			if ( null !== $existing || $result['data']['enabled'] ) {
 				$row       = [
-					'id'          => null !== $existing ? $existing->id : $next_id--,
-					'type'        => $result['data']['type'],
-					'source'      => $result['data']['source'],
-					'target'      => $result['data']['target'],
-					'status_code' => $result['data']['status_code'],
-					'enabled'     => $result['data']['enabled'] ? 1 : 0,
-					'position'    => null !== $existing && 'regex' === $existing->type ? $existing->position : 1000000 + $index,
+					'id'             => null !== $existing ? $existing->id : $next_id--,
+					'type'           => $result['data']['type'],
+					'source'         => $result['data']['source'],
+					'target'         => $result['data']['target'],
+					'status_code'    => $result['data']['status_code'],
+					'enabled'        => $result['data']['enabled'] ? 1 : 0,
+					'trailing_slash' => $result['data']['trailing_slash'] ? 1 : 0,
+					'position'       => null !== $existing && 'regex' === $existing->type ? $existing->position : 1000000 + $index,
 				];
 				$pending[] = $row;
 
@@ -132,7 +133,7 @@ final class Importer {
 						'entry'  => count( $entries ),
 						'type'   => $result['data']['type'],
 						'source' => $result['data']['source'],
-						'target' => (string) $result['data']['target'],
+						'target' => TargetResolver::trailing_slash( (string) $result['data']['target'], (string) $result['data']['target'], $result['data']['trailing_slash'] ),
 					];
 				}
 			}
@@ -340,7 +341,7 @@ final class Importer {
 				/**
 				 * Filters a mapped import rule. Return false (or any non-array) to skip it.
 				 *
-				 * @param array|false $rule   { type, source, target, status_code, enabled, note, origin }.
+				 * @param array|false $rule   { type, source, target, status_code, enabled, trailing_slash, note, origin }.
 				 * @param array       $entry  The raw entry (Redirection export entry or Yoast base-option entry).
 				 * @param string      $source 'redirection' or 'yoast'.
 				 */
@@ -459,8 +460,8 @@ final class Importer {
 		if ( null !== $rule['target'] && ! is_string( $rule['target'] ) ) {
 			return false;
 		}
-		foreach ( [ 'type', 'status_code', 'enabled', 'note', 'origin' ] as $field ) {
-			if ( null !== $rule[ $field ] && ! is_scalar( $rule[ $field ] ) ) {
+		foreach ( [ 'type', 'status_code', 'enabled', 'trailing_slash', 'note', 'origin' ] as $field ) {
+			if ( isset( $rule[ $field ] ) && ! is_scalar( $rule[ $field ] ) ) {
 				return false;
 			}
 		}

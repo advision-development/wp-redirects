@@ -45,6 +45,7 @@ final class YoastMapper {
 			return self::skip( $source_id, 'case_dependent_regex' );
 		}
 
+		$slash = false;
 		if ( in_array( $status, self::GONE_STATUSES, true ) ) {
 			$target = null;
 		} elseif ( in_array( $status, self::REDIRECT_STATUSES, true ) ) {
@@ -62,6 +63,9 @@ final class YoastMapper {
 				return self::skip( $source_id, 'unsupported_capture' );
 			}
 			$target = self::target( $url, $trailing_slash );
+			// Yoast adds the slash after substituting captures, so a capture target carries the
+			// rule flag and the runtime adds it per request (TargetResolver::trailing_slash()).
+			$slash = $trailing_slash && '/' === $target[0] && 1 === preg_match( '/\$[1-9]/', $target );
 		} else {
 			return self::skip( $source_id, 'unsupported_status' );
 		}
@@ -78,13 +82,14 @@ final class YoastMapper {
 			'ok'        => true,
 			'source_id' => $source_id,
 			'rule'      => [
-				'type'        => $regex ? 'regex' : 'exact',
-				'source'      => $regex ? $entry['origin'] : self::plain_source( $entry['origin'] ),
-				'target'      => $target,
-				'status_code' => $status,
-				'enabled'     => true,
-				'note'        => '',
-				'origin'      => 'manual',
+				'type'           => $regex ? 'regex' : 'exact',
+				'source'         => $regex ? $entry['origin'] : self::plain_source( $entry['origin'] ),
+				'target'         => $target,
+				'status_code'    => $status,
+				'enabled'        => true,
+				'trailing_slash' => $slash,
+				'note'           => '',
+				'origin'         => 'manual',
 			],
 			'notes'     => $notes,
 			'error'     => null,

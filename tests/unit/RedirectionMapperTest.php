@@ -73,6 +73,7 @@ final class RedirectionMapperTest extends TestCase {
 				'target'      => '/fx-new-page/',
 				'status_code' => 301,
 				'enabled'     => true,
+				'trailing_slash' => false,
 				'note'        => 'Imported title',
 				'origin'      => 'manual',
 			],

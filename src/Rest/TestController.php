@@ -94,7 +94,7 @@ final class TestController extends BaseController {
 		}
 
 		$forward = (bool) Settings::get( 'forward_query_string' );
-		$url     = Site::resolver()->resolve( $match->target, $match->captures, $normalized['query'], $forward );
+		$url     = Site::resolver()->resolve( $match->target, $match->captures, $normalized['query'], $forward, $match->trailing_slash );
 		if ( null === $url ) {
 			return rest_ensure_response( self::result( $base + [ 'blocked' => true ] ) );
 		}

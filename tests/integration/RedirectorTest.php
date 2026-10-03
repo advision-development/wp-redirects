@@ -34,13 +34,14 @@ final class RedirectorTest extends WP_UnitTestCase {
 		parent::tear_down();
 	}
 
-	private function rule( string $type, string $source, ?string $target, int $status = 301 ): int {
+	private function rule( string $type, string $source, ?string $target, int $status = 301, bool $trailing_slash = false ): int {
 		return $this->repo->insert(
 			[
-				'type'        => $type,
-				'source'      => $source,
-				'target'      => $target,
-				'status_code' => $status,
+				'type'           => $type,
+				'source'         => $source,
+				'target'         => $target,
+				'status_code'    => $status,
+				'trailing_slash' => $trailing_slash,
 			]
 		)->id;
 	}
@@ -81,6 +82,16 @@ final class RedirectorTest extends WP_UnitTestCase {
 
 		Settings::update( [ 'forward_query_string' => false ] );
 		$this->assertSame( 'http://example.org/fy-self/x', $this->redirector->decide( '/fy-self/x?a=1', 'GET' )['url'], 'Dropping the query is a real redirect.' );
+	}
+
+	public function test_trailing_slash_flag_adds_the_slash_after_captures_like_yoast(): void {
+		$this->rule( 'regex', '^/forum/(.*)', '/forum/$1', 301, true );
+		$decision = $this->redirector->decide( '/forum/abc', 'GET' );
+		$this->assertSame( 'http://example.org/forum/abc/', $decision['url'] );
+		$this->assertTrue( $decision['rule']['trailing_slash'] );
+		$this->assertNull( $this->redirector->decide( '/forum/abc/', 'GET' ), 'The slashed URL is the request itself.' );
+		$this->assertSame( 'http://example.org/forum/abc/?a=1', $this->redirector->decide( '/forum/abc?a=1', 'GET' )['url'], 'The slash goes before the forwarded query.' );
+		$this->assertNull( $this->redirector->decide( '/forum/guide.pdf', 'GET' ), 'A "." in the path gets no slash, so it is the request itself.' );
 	}
 
 	public function test_case_and_slash_fixes_still_redirect(): void {

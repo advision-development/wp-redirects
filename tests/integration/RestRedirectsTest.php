@@ -57,6 +57,31 @@ final class RestRedirectsTest extends Adv_Redirects_Rest_TestCase {
 		$this->assertCount( 1, $list );
 		$this->assertSame( 'hi', $list[0]['note'] );
 		$this->assertNull( $list[0]['chain'] );
+		$this->assertFalse( $list[0]['trailing_slash'] );
+	}
+
+	public function test_trailing_slash_field(): void {
+		$created = $this->create( [ 'type' => 'regex', 'source' => '^/forum/(.*)', 'target' => '/forum/$1', 'status_code' => 301, 'trailing_slash' => true ] );
+		$this->assertSame( 201, $created->get_status() );
+		$rule = $created->get_data()['rule'];
+		$this->assertTrue( $rule['trailing_slash'] );
+
+		$kept = $this->rest( 'PUT', '/redirects/' . $rule['id'], [ 'note' => 'edited' ] )->get_data()['rule'];
+		$this->assertTrue( $kept['trailing_slash'], 'Left out on update, it keeps its value.' );
+		$off = $this->rest( 'PUT', '/redirects/' . $rule['id'], [ 'trailing_slash' => false ] )->get_data()['rule'];
+		$this->assertFalse( $off['trailing_slash'] );
+
+		$bad = $this->create( [ 'type' => 'exact', 'source' => '/ts', 'target' => '/b', 'status_code' => 301, 'trailing_slash' => 'sometimes' ] );
+		$this->assertSame( 400, $bad->get_status() );
+		$this->assertSame( 'rest_invalid_param', $bad->get_data()['code'] );
+
+		$test = $this->rest( 'POST', '/test', [ 'path' => '/forum/abc' ] )->get_data();
+		$this->assertFalse( $test['matched'], 'The flag is off again, so /forum/abc resolves to itself.' );
+		$this->rest( 'PUT', '/redirects/' . $rule['id'], [ 'trailing_slash' => true ] );
+		$test = $this->rest( 'POST', '/test', [ 'path' => '/forum/abc' ] )->get_data();
+		$this->assertSame( 'http://example.org/forum/abc/', $test['target_url'] );
+		$this->assertSame( [ '/forum/abc', 'http://example.org/forum/abc/' ], $test['hops'], '/forum/abc/ resolves to itself: the chain ends.' );
+		$this->assertSame( 'self', $this->rest( 'POST', '/test', [ 'path' => '/forum/abc/' ] )->get_data()['reason'] );
 	}
 
 	public function test_schema_and_unknown_fields_rejected(): void {

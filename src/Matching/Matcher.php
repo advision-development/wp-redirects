@@ -48,7 +48,7 @@ final class Matcher {
 				continue;
 			}
 			if ( 1 === $result ) {
-				return new MatchResult( (int) $rule['id'], 'regex', (int) $rule['status'], $rule['target'], $captures );
+				return new MatchResult( (int) $rule['id'], 'regex', (int) $rule['status'], $rule['target'], $captures, ! empty( $rule['trailing_slash'] ) );
 			}
 		}
 
@@ -56,6 +56,6 @@ final class Matcher {
 	}
 
 	private function exact_result( array $entry ): MatchResult {
-		return new MatchResult( (int) $entry['id'], 'exact', (int) $entry['status'], $entry['target'] );
+		return new MatchResult( (int) $entry['id'], 'exact', (int) $entry['status'], $entry['target'], [], ! empty( $entry['trailing_slash'] ) );
 	}
 }

@@ -20,7 +20,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class RedirectsController extends BaseController {
 
-	private const FIELDS = [ 'type', 'source', 'target', 'status_code', 'enabled', 'note' ];
+	private const FIELDS = [ 'type', 'source', 'target', 'status_code', 'enabled', 'trailing_slash', 'note' ];
 
 	private Repository $repository;
 	private Validator $validator;
@@ -288,10 +288,10 @@ final class RedirectsController extends BaseController {
 		$skip = null === $rule->target || ( 'regex' === $rule->type && preg_match( '/\$[1-9]/', $rule->target ) );
 		if ( $rule->enabled && ! $skip ) {
 			$forward = (bool) Settings::get( 'forward_query_string' );
-			$start   = $rule->target;
+			$start   = TargetResolver::trailing_slash( $rule->target, $rule->target, $rule->trailing_slash );
 			if ( $forward && 'exact' === $rule->type && false !== strpos( $rule->source, '?' ) ) {
 				// The runtime appends the request's query to the target, so walk from the merged URL.
-				$start = TargetResolver::merge_query( $rule->target, explode( '?', $rule->source, 2 )[1] );
+				$start = TargetResolver::merge_query( $start, explode( '?', $rule->source, 2 )[1] );
 			}
 			$chain = $this->chains->resolve(
 				$rule->source,
@@ -323,25 +323,26 @@ final class RedirectsController extends BaseController {
 
 	private function rule_args( bool $create ): array {
 		$args = [
-			'type'        => [
+			'type'           => [
 				'type' => 'string',
 				'enum' => Validator::TYPES,
 			],
-			'source'      => [
+			'source'         => [
 				'type'      => 'string',
 				'minLength' => 1,
 				'maxLength' => 2048,
 			],
-			'target'      => [
+			'target'         => [
 				'type'      => [ 'string', 'null' ],
 				'maxLength' => 2048,
 			],
-			'status_code' => [
+			'status_code'    => [
 				'type' => 'integer',
 				'enum' => Validator::STATUSES,
 			],
-			'enabled'     => [ 'type' => 'boolean' ],
-			'note'        => [
+			'enabled'        => [ 'type' => 'boolean' ],
+			'trailing_slash' => [ 'type' => 'boolean' ],
+			'note'           => [
 				'type'      => 'string',
 				'maxLength' => 255,
 			],

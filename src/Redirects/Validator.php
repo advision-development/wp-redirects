@@ -33,7 +33,8 @@ final class Validator {
 	}
 
 	/**
-	 * @param array    $input   Raw fields (type, source, target, status_code, enabled, note). Missing fields keep existing values on update.
+	 * @param array    $input   Raw fields (type, source, target, status_code, enabled, trailing_slash, note). Missing fields keep
+	 *                          existing values on update; a missing trailing_slash is false on create.
 	 * @param int|null $id      Rule being updated, or null for a new rule.
 	 * @param array    $pending Rows not yet saved (e.g. earlier rules in an import), shaped like Repository::enabled_rows().
 	 *                          A pending row with an existing rule's id replaces that rule in the loop/chain walk.
@@ -49,12 +50,13 @@ final class Validator {
 		}
 
 		$base = null !== $existing ? $existing->to_array() : [
-			'type'        => 'exact',
-			'source'      => '',
-			'target'      => null,
-			'status_code' => 301,
-			'enabled'     => true,
-			'note'        => '',
+			'type'           => 'exact',
+			'source'         => '',
+			'target'         => null,
+			'status_code'    => 301,
+			'enabled'        => true,
+			'note'           => '',
+			'trailing_slash' => false,
 		];
 
 		$type    = (string) ( $input['type'] ?? $base['type'] );
@@ -63,7 +65,9 @@ final class Validator {
 		$target  = array_key_exists( 'target', $input ) ? $input['target'] : $base['target'];
 		$target  = null === $target ? '' : trim( (string) $target );
 		$enabled = array_key_exists( 'enabled', $input ) ? (bool) $input['enabled'] : (bool) $base['enabled'];
-		$note    = mb_substr( sanitize_text_field( (string) ( $input['note'] ?? $base['note'] ) ), 0, 255 );
+		// Stored as given. The runtime applies it only to relative redirect targets (TargetResolver::trailing_slash()).
+		$slash = array_key_exists( 'trailing_slash', $input ) ? (bool) $input['trailing_slash'] : ! empty( $base['trailing_slash'] );
+		$note  = mb_substr( sanitize_text_field( (string) ( $input['note'] ?? $base['note'] ) ), 0, 255 );
 
 		if ( ! in_array( $type, self::TYPES, true ) ) {
 			return self::error( 'adv_redirects_invalid_type', __( 'Type must be "exact" or "regex".', 'wp-redirects' ) );
@@ -106,18 +110,19 @@ final class Validator {
 			}
 			// Only a byte-identical target is the source itself. "/Foo" → "/foo" and "/foo" → "/foo/"
 			// are real redirects: requesting the target ends there, since a URL never redirects to itself.
-			if ( null !== $target && self::is_source_url( $target, $source ) ) {
+			if ( null !== $target && self::is_source_url( TargetResolver::trailing_slash( $target, $target, $slash ), $source ) ) {
 				return self::error( 'adv_redirects_invalid_target', __( 'The target is the same as the source.', 'wp-redirects' ) );
 			}
 		}
 
 		$data = [
-			'type'        => $type,
-			'source'      => $source,
-			'target'      => $target,
-			'status_code' => $status,
-			'enabled'     => $enabled,
-			'note'        => $note,
+			'type'           => $type,
+			'source'         => $source,
+			'target'         => $target,
+			'status_code'    => $status,
+			'enabled'        => $enabled,
+			'trailing_slash' => $slash,
+			'note'           => $note,
 		];
 
 		/**
@@ -135,10 +140,11 @@ final class Validator {
 		$warnings = [];
 		if ( $enabled && null !== $target && ! ( 'regex' === $type && preg_match( '/\$[1-9]/', $target ) ) ) {
 			$forward = (bool) Settings::get( 'forward_query_string' );
-			$start   = $target;
+			// The first hop as the runtime resolves it: trailing slash first, then the query merge.
+			$start = TargetResolver::trailing_slash( $target, $target, $slash );
 			if ( $forward && 'exact' === $type && false !== strpos( $source, '?' ) ) {
 				// The runtime appends the request's query to the target, so walk from the merged URL.
-				$start = TargetResolver::merge_query( $target, explode( '?', $source, 2 )[1] );
+				$start = TargetResolver::merge_query( $start, explode( '?', $source, 2 )[1] );
 				// A merged first hop equal to the source would never redirect: "/a?x=1" → "/a?x=1".
 				if ( self::is_source_url( $start, $source ) ) {
 					return self::error(
@@ -286,12 +292,13 @@ final class Validator {
 		}
 
 		$rows[] = [
-			'id'          => (int) $id,
-			'type'        => $data['type'],
-			'source'      => $data['source'],
-			'target'      => $data['target'],
-			'status_code' => $data['status_code'],
-			'position'    => null !== $existing && 'regex' === $existing->type ? $existing->position : PHP_INT_MAX,
+			'id'             => (int) $id,
+			'type'           => $data['type'],
+			'source'         => $data['source'],
+			'target'         => $data['target'],
+			'status_code'    => $data['status_code'],
+			'trailing_slash' => $data['trailing_slash'],
+			'position'       => null !== $existing && 'regex' === $existing->type ? $existing->position : PHP_INT_MAX,
 		];
 
 		return RulesetCompiler::compile( $rows );

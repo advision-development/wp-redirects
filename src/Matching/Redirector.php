@@ -55,7 +55,7 @@ final class Redirector {
 		/**
 		 * Fires immediately before a redirect response is sent.
 		 *
-		 * @param array  $rule   { id, type, target, status }.
+		 * @param array  $rule   { id, type, target, status, trailing_slash }.
 		 * @param string $url    Final absolute URL.
 		 * @param int    $status HTTP status code.
 		 */
@@ -149,10 +149,11 @@ final class Redirector {
 		}
 
 		$rule = [
-			'id'     => $match->rule_id,
-			'type'   => $match->type,
-			'target' => $match->target,
-			'status' => $match->status,
+			'id'             => $match->rule_id,
+			'type'           => $match->type,
+			'target'         => $match->target,
+			'status'         => $match->status,
+			'trailing_slash' => $match->trailing_slash,
 		];
 
 		/**
@@ -184,7 +185,7 @@ final class Redirector {
 		 */
 		$forward = (bool) apply_filters( 'adv_redirects_forward_query_string', (bool) Settings::get( 'forward_query_string' ), $rule );
 
-		$url = Site::resolver()->resolve( $match->target, $match->captures, $request['query'], $forward );
+		$url = Site::resolver()->resolve( $match->target, $match->captures, $request['query'], $forward, $match->trailing_slash );
 		if ( null === $url ) {
 			return null;
 		}

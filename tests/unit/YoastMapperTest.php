@@ -29,6 +29,7 @@ final class YoastMapperTest extends TestCase {
 					'target'      => '/fy-new-page/',
 					'status_code' => 301,
 					'enabled'     => true,
+					'trailing_slash' => false,
 					'note'        => '',
 					'origin'      => 'manual',
 				],
@@ -71,6 +72,32 @@ final class YoastMapperTest extends TestCase {
 		$this->assertSame( '/', $inline( '/' ) );
 		$this->assertSame( '/v2.0/page', $inline( 'v2.0/page' ), 'Like Yoast, a "." in any segment means no slash.' );
 		$this->assertSame( '/a/b/', $inline( 'a/b' ) );
+	}
+
+	public function test_capture_targets_carry_the_trailing_slash_flag(): void {
+		$regex = static function ( string $url, bool $permalinks ): array {
+			return YoastMapper::map( [ 'id' => 1, 'origin' => '^/x/(a)/(b)/(c)', 'url' => $url, 'type' => 301, 'format' => 'regex' ], $permalinks )['rule'];
+		};
+		$cases = [
+			'forum/$1'            => '/forum/$1',
+			'usa/alabama$1'       => '/usa/alabama$1',
+			'$1/futures'          => '/$1/futures',
+			'odds$1/$2props/$3'   => '/odds$1/$2props/$3',
+		];
+		foreach ( $cases as $url => $target ) {
+			$on = $regex( $url, true );
+			$this->assertSame( $target, $on['target'], "{$url}: no static slash after a capture" );
+			$this->assertTrue( $on['trailing_slash'], "{$url}: the runtime adds it" );
+			$off = $regex( $url, false );
+			$this->assertSame( $target, $off['target'], $url );
+			$this->assertFalse( $off['trailing_slash'], "{$url}: permalinks without a slash" );
+		}
+
+		$this->assertSame( '/fy-new/$1', $this->map( 17 )['rule']['target'] );
+		$this->assertTrue( $this->map( 17 )['rule']['trailing_slash'] );
+		$this->assertFalse( $this->map( 1 )['rule']['trailing_slash'], 'A target without a capture gets the static slash instead.' );
+		$this->assertFalse( $regex( 'https://example.com/$1', true )['trailing_slash'], 'Absolute targets never get the flag.' );
+		$this->assertFalse( $this->map( 6 )['rule']['trailing_slash'], 'A 410 has no target.' );
 	}
 
 	public function test_targets_with_another_scheme_are_kept_unchanged(): void {

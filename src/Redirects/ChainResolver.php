@@ -20,7 +20,7 @@ final class ChainResolver {
 
 	/**
 	 * @param string      $source_label Shown as the first hop.
-	 * @param string      $target       Where the rule points.
+	 * @param string      $target       Where the rule points, as the runtime resolves it (trailing slash applied).
 	 * @param array       $ruleset      Compiled rule set to follow.
 	 * @param string|null $source_key   Normalized key of an exact source, treated as already visited.
 	 * @param bool        $forward_query Whether the runtime forwards each request's query string to its target.
@@ -52,7 +52,7 @@ final class ChainResolver {
 			if ( null === $match || null === $match->target ) {
 				return self::result( false, $hops, $current );
 			}
-			$next = TargetResolver::substitute( $match->target, $match->captures, true );
+			$next = TargetResolver::trailing_slash( $match->target, TargetResolver::substitute( $match->target, $match->captures, true ), $match->trailing_slash );
 			if ( $forward_query && '' !== $request['query'] ) {
 				$next = TargetResolver::merge_query( $next, $request['query'] );
 			}

@@ -38,9 +38,10 @@ final class RulesetCompiler {
 				continue;
 			}
 			$entry = [
-				'id'     => (int) $row['id'],
-				'target' => null === $row['target'] || '' === $row['target'] ? null : (string) $row['target'],
-				'status' => (int) $row['status_code'],
+				'id'             => (int) $row['id'],
+				'target'         => null === $row['target'] || '' === $row['target'] ? null : (string) $row['target'],
+				'status'         => (int) $row['status_code'],
+				'trailing_slash' => ! empty( $row['trailing_slash'] ),
 			];
 
 			if ( 'regex' === $row['type'] ) {

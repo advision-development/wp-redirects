@@ -128,6 +128,33 @@ final class TargetResolverTest extends TestCase {
 		$this->assertNull( $this->resolver()->resolve( '/new', [], 'a=' . str_repeat( 'x', 2100 ), true ) );
 	}
 
+	public function test_trailing_slash_is_added_after_substitution(): void {
+		$this->assertSame( 'https://example.com/forum/abc/', $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], '', false, true ) );
+		$this->assertSame( 'https://example.com/forum/abc/?a=1', $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], 'a=1', true, true ), 'Added before the query merge.' );
+		$this->assertSame( 'https://example.com/forum/abc', $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], '', false ), 'No flag, no slash.' );
+		$this->assertSame( 'https://example.com/b/', $this->resolver()->resolve( '/b', [], '', false, true ), 'A fixed target with the flag gets it too.' );
+	}
+
+	public function test_trailing_slash_conditions(): void {
+		$this->assertSame( '/a/', TargetResolver::trailing_slash( '/$1', '/a', true ) );
+		$this->assertSame( '/a', TargetResolver::trailing_slash( '/$1', '/a', false ), 'Flag off.' );
+		$this->assertSame( '/a/', TargetResolver::trailing_slash( '/$1', '/a/', true ), 'Already ends in a slash.' );
+		$this->assertSame( '/guide.pdf', TargetResolver::trailing_slash( '/$1', '/guide.pdf', true ), 'A "." in the path (Yoast has_extension).' );
+		$this->assertSame( '/v2.0/page', TargetResolver::trailing_slash( '/$1/page', '/v2.0/page', true ), 'A "." in any segment.' );
+		$this->assertSame( '/a?x=1', TargetResolver::trailing_slash( '/a?x=$1', '/a?x=1', true ) );
+		$this->assertSame( '/a#top', TargetResolver::trailing_slash( '/a#top', '/a#top', true ), 'A literal "#" in the template.' );
+		$this->assertSame( 'https://x.test/a', TargetResolver::trailing_slash( 'https://x.test/$1', 'https://x.test/a', true ), 'Absolute targets are left alone.' );
+		$this->assertSame( '//x.test/a', TargetResolver::trailing_slash( '//x.test/$1', '//x.test/a', true ), 'Protocol-relative is not relative.' );
+	}
+
+	public function test_trailing_slash_then_self_check_matches_yoast(): void {
+		// /forum/(.*) → /forum/$1 with the flag: /forum/abc redirects once, /forum/abc/ does not.
+		$first = $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], '', false, true );
+		$this->assertFalse( TargetResolver::is_self( $first, 'https://example.com', '/forum/abc', '' ) );
+		$again = $this->resolver()->resolve( '/forum/$1', [ '/forum/abc/', 'abc/' ], '', false, true );
+		$this->assertTrue( TargetResolver::is_self( $again, 'https://example.com', '/forum/abc/', '' ) );
+	}
+
 	public function test_is_self_matches_a_byte_identical_url(): void {
 		$this->assertTrue( TargetResolver::is_self( 'https://example.com/forum/x', 'https://example.com', '/forum/x', '' ) );
 		$this->assertTrue( TargetResolver::is_self( 'https://example.com/a?b=1', 'https://example.com', '/a', 'b=1' ) );

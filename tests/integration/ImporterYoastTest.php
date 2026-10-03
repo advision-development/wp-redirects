@@ -1,6 +1,9 @@
 <?php
 
 use Advision\Redirects\Import\Importer;
+use Advision\Redirects\Matching\Redirector;
+use Advision\Redirects\Matching\RuleCache;
+use Advision\Redirects\Tracking\HitTracker;
 use Advision\Redirects\Redirects\ChainResolver;
 use Advision\Redirects\Redirects\Repository;
 use Advision\Redirects\Redirects\Validator;
@@ -117,6 +120,37 @@ final class ImporterYoastTest extends WP_UnitTestCase {
 
 		$result = $this->importer->import( $entries, [], Importer::SOURCE_YOAST );
 		$this->assertSame( 2, $result['counts']['created'] );
+	}
+
+	public function test_capture_targets_get_the_trailing_slash_at_runtime_like_yoast(): void {
+		$existing = $this->repo->insert( [ 'type' => 'regex', 'source' => '^/forum/(.*)', 'target' => '/forum/$1', 'status_code' => 301 ] );
+		$this->assertFalse( $existing->trailing_slash );
+		$entries = [
+			[ 'id' => 1, 'origin' => '^/forum/(.*)', 'url' => 'forum/$1', 'type' => 301, 'format' => 'regex' ],
+			[ 'id' => 2, 'origin' => '\/(mlb|nba|nfl)\/future-picks\/', 'url' => '$1/futures', 'type' => 301, 'format' => 'regex' ],
+			[ 'id' => 3, 'origin' => 'nfl/futures', 'url' => 'nfl-futures', 'type' => 301, 'format' => 'plain' ],
+			[ 'id' => 4, 'origin' => 'nfl-props', 'url' => 'nfl/future-picks', 'type' => 301, 'format' => 'plain' ],
+		];
+
+		$preview = $this->importer->preview( $entries, [], Importer::SOURCE_YOAST );
+		$this->assertSame( 'overwrite', $preview['entries'][0]['status'] );
+		$this->assertTrue( $preview['entries'][0]['rule']['trailing_slash'] );
+		$this->assertSame(
+			[ '/nfl-props', '/nfl/future-picks/', '/nfl/futures/', '/nfl-futures/' ],
+			$preview['entries'][3]['warnings'][0]['hops'],
+			'The chain follows the slash the runtime adds after "$1/futures".'
+		);
+
+		$this->importer->import( $entries, [], Importer::SOURCE_YOAST );
+		$forum = $this->repo->find( $existing->id );
+		$this->assertTrue( $forum->trailing_slash, 'An overwrite updates the flag.' );
+		$this->assertSame( '/forum/$1', $forum->target );
+
+		$redirector = new Redirector( new RuleCache( $this->repo ), new HitTracker( $this->repo ) );
+		$this->assertSame( 'http://example.org/forum/abc/', $redirector->decide( '/forum/abc', 'GET' )['url'] );
+		$this->assertNull( $redirector->decide( '/forum/abc/', 'GET' ) );
+		$this->assertSame( 'http://example.org/nfl/futures/', $redirector->decide( '/nfl/future-picks/', 'GET' )['url'] );
+		$this->assertSame( 'http://example.org/nfl-futures/', $redirector->decide( '/nfl/futures/', 'GET' )['url'] );
 	}
 
 	public function test_filter_receives_the_source(): void {
