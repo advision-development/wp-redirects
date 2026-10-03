@@ -37,12 +37,7 @@ final class YoastStoreTest extends WP_UnitTestCase {
 	 * @dataProvider stores
 	 */
 	public function test_remove_writes_base_and_export_options( string $class ): void {
-		$outcome = $this->store( $class )->remove(
-			[
-				[ 'origin' => 'a-page', 'format' => 'plain' ],
-				[ 'origin' => '^/c/(.*)', 'format' => 'regex' ],
-			]
-		);
+		$outcome = $this->store( $class )->remove( [ self::SEED[0], self::SEED[2] ] );
 
 		$this->assertSame( [ self::SEED[0], self::SEED[2] ], $outcome['removed'] );
 		$this->assertSame( [], $outcome['not_found'] );
@@ -55,15 +50,17 @@ final class YoastStoreTest extends WP_UnitTestCase {
 	 * @dataProvider stores
 	 */
 	public function test_remove_reports_items_it_cannot_find( string $class ): void {
-		$outcome = $this->store( $class )->remove(
-			[
-				[ 'origin' => 'missing', 'format' => 'plain' ],
-				[ 'origin' => 'a-page', 'format' => 'regex' ],
-			]
-		);
+		$items   = [
+			[ 'origin' => 'missing', 'format' => 'plain', 'url' => 'x', 'type' => 301 ],
+			[ 'format' => 'regex' ] + self::SEED[0],
+			[ 'url' => 'edited' ] + self::SEED[0],
+			[ 'type' => 302 ] + self::SEED[0],
+			[ 'url' => 'gone-now' ] + self::SEED[1],
+		];
+		$outcome = $this->store( $class )->remove( $items );
 
 		$this->assertSame( [], $outcome['removed'] );
-		$this->assertSame( [ [ 'origin' => 'missing', 'format' => 'plain' ], [ 'origin' => 'a-page', 'format' => 'regex' ] ], $outcome['not_found'] );
+		$this->assertSame( $items, $outcome['not_found'], 'An entry whose format, url or type changed is not removed.' );
 		$this->assertSame( self::SEED, get_option( YoastOptionStore::BASE_OPTION ), 'Nothing is written when nothing is removed.' );
 		$this->assertFalse( get_option( YoastOptionStore::PLAIN_OPTION ) );
 	}
@@ -85,19 +82,13 @@ final class YoastStoreTest extends WP_UnitTestCase {
 
 	public function test_manager_store_saves_once_per_request(): void {
 		$store = new YoastManagerStore();
-		$store->remove(
-			[
-				[ 'origin' => 'a-page', 'format' => 'plain' ],
-				[ 'origin' => 'b-page', 'format' => 'plain' ],
-				[ 'origin' => '^/c/(.*)', 'format' => 'regex' ],
-			]
-		);
+		$store->remove( self::SEED );
 		$this->assertSame( 1, WPSEO_Redirect_Manager::$saves );
 
 		$store->add( self::SEED );
 		$this->assertSame( 2, WPSEO_Redirect_Manager::$saves );
 
-		$store->remove( [ [ 'origin' => 'missing', 'format' => 'plain' ] ] );
+		$store->remove( [ [ 'origin' => 'missing', 'format' => 'plain', 'url' => '', 'type' => 410 ] ] );
 		$this->assertSame( 2, WPSEO_Redirect_Manager::$saves, 'No save when nothing changed.' );
 	}
 
@@ -105,11 +96,26 @@ final class YoastStoreTest extends WP_UnitTestCase {
 		add_option( YoastOptionStore::PLAIN_OPTION, [], '', false );
 		update_option( YoastOptionStore::BASE_OPTION, array_merge( self::SEED, [ 'junk', [ 'origin' => 'x' ] ] ), false );
 
-		( new YoastOptionStore() )->remove( [ [ 'origin' => 'a-page', 'format' => 'plain' ] ] );
+		( new YoastOptionStore() )->remove( [ self::SEED[0] ] );
 
 		$this->assertCount( 4, get_option( YoastOptionStore::BASE_OPTION ), 'Malformed rows are kept untouched.' );
 		$this->assertSame( [ 'b-page' ], array_keys( get_option( YoastOptionStore::PLAIN_OPTION ) ) );
 		wp_cache_delete( 'alloptions', 'options' );
 		$this->assertArrayNotHasKey( YoastOptionStore::PLAIN_OPTION, wp_load_alloptions() );
+	}
+
+	public function test_option_store_keys_plain_exports_by_the_trimmed_origin(): void {
+		$rows = [
+			[ 'origin' => '/slashed/', 'url' => 'a', 'type' => 301, 'format' => 'plain' ],
+			[ 'origin' => '/', 'url' => 'home', 'type' => 301, 'format' => 'plain' ],
+			[ 'origin' => '^/r/$', 'url' => 'b', 'type' => 301, 'format' => 'regex' ],
+			[ 'origin' => 'gone', 'url' => '', 'type' => 410, 'format' => 'plain' ],
+		];
+		update_option( YoastOptionStore::BASE_OPTION, $rows, false );
+
+		( new YoastOptionStore() )->remove( [ $rows[3] ] );
+
+		$this->assertSame( [ 'slashed', '/' ], array_keys( get_option( YoastOptionStore::PLAIN_OPTION ) ) );
+		$this->assertSame( [ '^/r/$' ], array_keys( get_option( YoastOptionStore::REGEX_OPTION ) ), 'Regex origins are kept raw.' );
 	}
 }

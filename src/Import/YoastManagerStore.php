@@ -20,7 +20,12 @@ final class YoastManagerStore implements YoastStore {
 
 		foreach ( $items as $item ) {
 			$redirect = $option->get( $item['origin'] );
-			if ( ! $redirect instanceof \WPSEO_Redirect || $redirect->get_format() !== $item['format'] ) {
+			// Only an entry unchanged since the import: same format, target and type.
+			if ( ! $redirect instanceof \WPSEO_Redirect
+				|| $redirect->get_format() !== $item['format']
+				|| (string) $redirect->get_target() !== (string) $item['url']
+				|| (int) $redirect->get_type() !== (int) $item['type']
+			) {
 				$not_found[] = $item;
 				continue;
 			}

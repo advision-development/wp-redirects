@@ -79,6 +79,8 @@ final class RestPermissionsTest extends Adv_Redirects_Rest_TestCase {
 						[
 							'origin' => 'a',
 							'format' => 'plain',
+							'url'    => 'b',
+							'type'   => 301,
 						],
 					],
 				],

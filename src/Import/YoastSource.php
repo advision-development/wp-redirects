@@ -98,13 +98,15 @@ final class YoastSource {
 
 	/**
 	 * Removes Yoast redirects that WP Redirects now covers. An item is removed only if Yoast still
-	 * holds it with the same origin and format and WP Redirects has a rule with the same conflict
-	 * key; anything else is left in Yoast.
+	 * holds it unchanged (same origin, format, url and type, so an entry edited in Yoast after the
+	 * import is `not_found`) and WP Redirects has a rule with the same conflict key. A regex that
+	 * matched the query string (note `regex_query`) is never covered: WP Redirects matches regex
+	 * against the path only. Anything else is left in Yoast.
 	 *
 	 * The backup is saved before anything is removed. If it cannot be saved, nothing is removed and a
 	 * WP_Error is returned.
 	 *
-	 * @param array<int,array{origin:string,format:string}> $items Redirects to remove.
+	 * @param array<int,array{origin:string,format:string,url:string,type:int}> $items Redirects to remove.
 	 * @return array|\WP_Error
 	 */
 	public function remove( array $items ) {
@@ -117,13 +119,14 @@ final class YoastSource {
 		$entries  = [];
 
 		foreach ( $items as $key => $item ) {
-			$entry = self::find( $base, (string) $item['origin'], (string) $item['format'] );
+			$items[ $key ] = self::item( $item );
+			$entry         = self::find( $base, $items[ $key ] );
 			if ( null === $entry ) {
 				$results[ $key ] = 'not_found';
 				continue;
 			}
 			$mapped = YoastMapper::map( $entry, $trailing );
-			if ( ! $mapped['ok'] ) {
+			if ( ! $mapped['ok'] || in_array( 'regex_query', $mapped['notes'], true ) ) {
 				$results[ $key ] = 'not_covered';
 				continue;
 			}
@@ -138,10 +141,7 @@ final class YoastSource {
 		$wanted = [];
 		foreach ( $results as $key => $result ) {
 			if ( 'removed' === $result ) {
-				$wanted[ $key ] = [
-					'origin' => (string) $items[ $key ]['origin'],
-					'format' => (string) $items[ $key ]['format'],
-				];
+				$wanted[ $key ] = $items[ $key ];
 			}
 		}
 
@@ -174,7 +174,7 @@ final class YoastSource {
 			foreach ( array_reverse( array_keys( $wanted ) ) as $key ) {
 				$item = $wanted[ $key ];
 				foreach ( $not_found as $position => $missing ) {
-					if ( is_array( $missing ) && isset( $missing['origin'], $missing['format'] ) && $missing['origin'] === $item['origin'] && $missing['format'] === $item['format'] ) {
+					if ( is_array( $missing ) && self::item( $missing ) === $item ) {
 						unset( $not_found[ $position ] );
 						$results[ $key ] = 'not_found';
 						break;
@@ -261,11 +261,29 @@ final class YoastSource {
 	}
 
 	/**
-	 * @param array $base Base option rows.
+	 * A removal item in one canonical shape: { origin, format, url, type:int }.
+	 *
+	 * @param array $item Removal item.
+	 * @return array{origin:string,format:string,url:string,type:int}
 	 */
-	private static function find( array $base, string $origin, string $format ): ?array {
+	private static function item( array $item ): array {
+		return [
+			'origin' => (string) ( $item['origin'] ?? '' ),
+			'format' => (string) ( $item['format'] ?? '' ),
+			'url'    => (string) ( $item['url'] ?? '' ),
+			'type'   => (int) ( $item['type'] ?? 0 ),
+		];
+	}
+
+	/**
+	 * The base entry identical to the item: same origin, format, url and type.
+	 *
+	 * @param array $base Base option rows.
+	 * @param array $item From self::item().
+	 */
+	private static function find( array $base, array $item ): ?array {
 		foreach ( $base as $entry ) {
-			if ( is_array( $entry ) && isset( $entry['origin'], $entry['format'] ) && $entry['origin'] === $origin && $entry['format'] === $format ) {
+			if ( YoastOptionStore::is_same( $entry, $item ) ) {
 				return $entry;
 			}
 		}

@@ -12,7 +12,10 @@ defined( 'ABSPATH' ) || exit;
 interface YoastStore {
 
 	/**
-	 * @param array<int,array{origin:string,format:string}> $items Redirects to remove.
+	 * Removes only entries that match an item exactly (origin, format, url and type); an entry that
+	 * changed in Yoast is reported in `not_found`.
+	 *
+	 * @param array<int,array{origin:string,format:string,url:string,type:int}> $items Redirects to remove.
 	 * @return array{removed:array<int,array>,not_found:array<int,array>} `removed` holds the raw base entries.
 	 */
 	public function remove( array $items ): array;

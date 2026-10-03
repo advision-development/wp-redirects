@@ -36,9 +36,22 @@ final class YoastSourceTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * A removal item for a fixture origin, with the url and type Yoast holds for it.
+	 */
+	private function item( string $origin, string $format = 'plain' ): array {
+		foreach ( $this->fixture as $row ) {
+			if ( isset( $row['format'] ) && $row['origin'] === $origin && $row['format'] === $format ) {
+				return [ 'origin' => $origin, 'format' => $format, 'url' => $row['url'], 'type' => (int) $row['type'] ];
+			}
+		}
+		return [ 'origin' => $origin, 'format' => $format, 'url' => '', 'type' => 301 ];
+	}
+
+	/**
 	 * Previews and imports everything the preview accepts, as the admin does.
 	 *
-	 * @return array{0:array,1:array} Preview, and the removal candidates { origin, format }.
+	 * @return array{0:array,1:array} Preview, and the removal candidates { origin, format, url, type }
+	 *                                the client sends (no regex that matched the query string).
 	 */
 	private function import_all(): array {
 		$entries = $this->yoast->entries();
@@ -47,11 +60,17 @@ final class YoastSourceTest extends WP_UnitTestCase {
 		$remove  = [];
 		foreach ( $preview['entries'] as $entry ) {
 			$raw = $entries[ $entry['index'] ];
+			if ( ! in_array( $entry['status'], [ 'new', 'overwrite', 'superseded' ], true ) ) {
+				continue;
+			}
+			$item = [ 'origin' => $raw['origin'], 'format' => $raw['format'], 'url' => $raw['url'], 'type' => (int) $raw['type'] ];
 			if ( in_array( $entry['status'], [ 'new', 'overwrite' ], true ) ) {
-				$batch[]  = $raw;
-				$remove[] = [ 'origin' => $raw['origin'], 'format' => $raw['format'] ];
+				$batch[] = $raw;
+				if ( ! in_array( 'regex_query', $entry['notes'], true ) ) {
+					$remove[] = $item;
+				}
 			} elseif ( 'superseded' === $entry['status'] ) {
-				$remove[] = [ 'origin' => $raw['origin'], 'format' => $raw['format'] ];
+				$remove[] = $item;
 			}
 		}
 		foreach ( array_chunk( $batch, 50 ) as $chunk ) {
@@ -127,7 +146,7 @@ final class YoastSourceTest extends WP_UnitTestCase {
 	public function test_remove_removes_covered_entries_backs_them_up_and_fires_the_hook(): void {
 		$this->seed();
 		list( , $remove ) = $this->import_all();
-		$this->assertCount( 17, $remove );
+		$this->assertCount( 16, $remove );
 
 		$fired = [];
 		add_action(
@@ -139,9 +158,10 @@ final class YoastSourceTest extends WP_UnitTestCase {
 
 		$result = $this->yoast->remove( $remove );
 
-		$this->assertSame( [ 17, 0, 0 ], [ $result['removed'], $result['not_found'], $result['not_covered'] ] );
+		$this->assertSame( [ 16, 0, 0 ], [ $result['removed'], $result['not_found'], $result['not_covered'] ] );
 		$this->assertSame( [ 'removed' ], array_values( array_unique( array_column( $result['items'], 'result' ) ) ) );
-		$this->assertCount( 9, get_option( YoastOptionStore::BASE_OPTION ) );
+		$this->assertCount( 10, get_option( YoastOptionStore::BASE_OPTION ) );
+		$this->assertContains( '^/fy-search\\?q=(.*)', $this->base_origins(), 'A regex that matched the query string stays in Yoast.' );
 		$this->assertNotContains( 'fy-old-page', $this->base_origins() );
 		$this->assertNotContains( 'fy-case-page', $this->base_origins(), 'A superseded entry is covered by its winner.' );
 		$this->assertContains( 'fy-bad-type', $this->base_origins(), 'Skipped entries stay in Yoast.' );
@@ -149,9 +169,9 @@ final class YoastSourceTest extends WP_UnitTestCase {
 		$this->assertArrayHasKey( 'fy-bad-type', get_option( YoastOptionStore::PLAIN_OPTION ) );
 
 		$this->assertCount( 1, $fired );
-		$this->assertCount( 17, $fired[0] );
+		$this->assertCount( 16, $fired[0] );
 		$backup = $this->yoast->status()['backup'];
-		$this->assertSame( 17, $backup['count'] );
+		$this->assertSame( 16, $backup['count'] );
 		$this->assertMatchesRegularExpression( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $backup['last_removed_at'] );
 		$row = get_option( YoastSource::BACKUP_OPTION )[0];
 		$this->assertSame( [ 'origin' => 'fy-old-page', 'url' => 'fy-new-page', 'type' => 301, 'format' => 'plain' ], $row['entry'] );
@@ -166,11 +186,11 @@ final class YoastSourceTest extends WP_UnitTestCase {
 
 		$result = $this->yoast->remove(
 			[
-				[ 'origin' => 'fy-old-page', 'format' => 'plain' ],
-				[ 'origin' => 'fy-gone', 'format' => 'plain' ],
-				[ 'origin' => 'fy-not-there', 'format' => 'plain' ],
-				[ 'origin' => 'fy-gone', 'format' => 'regex' ],
-				[ 'origin' => 'fy-bad-type', 'format' => 'plain' ],
+				$this->item( 'fy-old-page' ),
+				$this->item( 'fy-gone' ),
+				$this->item( 'fy-not-there' ),
+				[ 'format' => 'regex' ] + $this->item( 'fy-gone' ),
+				$this->item( 'fy-bad-type' ),
 			]
 		);
 
@@ -193,7 +213,7 @@ final class YoastSourceTest extends WP_UnitTestCase {
 				++$fired;
 			}
 		);
-		$result = $this->yoast->remove( [ [ 'origin' => 'fy-old-page', 'format' => 'plain' ] ] );
+		$result = $this->yoast->remove( [ $this->item( 'fy-old-page' ) ] );
 		$this->assertSame( 'not_covered', $result['items'][0]['result'], 'Nothing was imported yet.' );
 		$this->assertNull( $this->yoast->status()['backup'] );
 		$this->assertSame( 0, $fired );
@@ -226,7 +246,7 @@ final class YoastSourceTest extends WP_UnitTestCase {
 		);
 
 		$yoast  = new YoastSource( $this->importer, $store );
-		$result = $yoast->remove( [ [ 'origin' => 'fy-old-page', 'format' => 'plain' ] ] );
+		$result = $yoast->remove( [ $this->item( 'fy-old-page' ) ] );
 
 		$this->assertSame( 'not_found', $result['items'][0]['result'] );
 		$this->assertSame( [ 0, 1, 0 ], [ $result['removed'], $result['not_found'], $result['not_covered'] ] );
@@ -238,7 +258,7 @@ final class YoastSourceTest extends WP_UnitTestCase {
 	public function test_duplicate_items_are_counted_once(): void {
 		$this->seed();
 		$this->import_all();
-		$item = [ 'origin' => 'fy-old-page', 'format' => 'plain' ];
+		$item = $this->item( 'fy-old-page' );
 
 		$result = $this->yoast->remove( [ $item, $item ] );
 
@@ -297,18 +317,18 @@ final class YoastSourceTest extends WP_UnitTestCase {
 
 		$result = $yoast->remove( $remove );
 
-		$this->assertSame( [ 17, 0, 0 ], [ $result['removed'], $result['not_found'], $result['not_covered'] ] );
-		$this->assertCount( $total - 17, get_option( YoastOptionStore::BASE_OPTION ) );
+		$this->assertSame( [ 16, 0, 0 ], [ $result['removed'], $result['not_found'], $result['not_covered'] ] );
+		$this->assertCount( $total - 16, get_option( YoastOptionStore::BASE_OPTION ) );
 		$this->assertNotContains( 'fy-old-page', $this->base_origins() );
 		$rows = get_option( YoastSource::BACKUP_OPTION );
-		$this->assertCount( 17, $rows );
+		$this->assertCount( 16, $rows );
 		foreach ( $rows as $row ) {
 			$keys = array_keys( $row['entry'] );
 			sort( $keys );
 			$this->assertSame( [ 'format', 'origin', 'type', 'url' ], $keys );
 		}
 
-		$this->assertSame( [ 'restored' => 17, 'already_present' => 0 ], $yoast->restore() );
+		$this->assertSame( [ 'restored' => 16, 'already_present' => 0 ], $yoast->restore() );
 		$this->assertCount( $total, get_option( YoastOptionStore::BASE_OPTION ) );
 		$this->assertContains( 'fy-old-page', $this->base_origins() );
 		$this->assertNull( $yoast->status()['backup'] );
@@ -339,9 +359,9 @@ final class YoastSourceTest extends WP_UnitTestCase {
 			}
 		);
 
-		$this->assertSame( [ 'restored' => 17, 'already_present' => 0 ], $this->yoast->restore() );
+		$this->assertSame( [ 'restored' => 16, 'already_present' => 0 ], $this->yoast->restore() );
 		$this->assertCount( 26, get_option( YoastOptionStore::BASE_OPTION ) );
-		$this->assertCount( 17, $restored );
+		$this->assertCount( 16, $restored );
 		$this->assertNull( $this->yoast->status()['backup'] );
 		$this->assertCount( 16, $this->repo->all(), 'WP Redirects rules are not touched.' );
 		$this->assertSame( [ 'restored' => 0, 'already_present' => 0 ], $this->yoast->restore(), 'Nothing to restore.' );
@@ -350,7 +370,7 @@ final class YoastSourceTest extends WP_UnitTestCase {
 	public function test_restore_skips_origins_yoast_has_again(): void {
 		$this->seed();
 		$this->import_all();
-		$this->yoast->remove( [ [ 'origin' => 'fy-old-page', 'format' => 'plain' ], [ 'origin' => 'fy-gone', 'format' => 'plain' ] ] );
+		$this->yoast->remove( [ $this->item( 'fy-old-page' ), $this->item( 'fy-gone' ) ] );
 		$base   = get_option( YoastOptionStore::BASE_OPTION );
 		$base[] = [ 'origin' => 'fy-gone', 'url' => 'recreated', 'type' => 301, 'format' => 'plain' ];
 		update_option( YoastOptionStore::BASE_OPTION, $base, false );
@@ -362,7 +382,7 @@ final class YoastSourceTest extends WP_UnitTestCase {
 	public function test_delete_backup(): void {
 		$this->seed();
 		$this->import_all();
-		$this->yoast->remove( [ [ 'origin' => 'fy-gone', 'format' => 'plain' ] ] );
+		$this->yoast->remove( [ $this->item( 'fy-gone' ) ] );
 		$this->yoast->delete_backup();
 		$this->assertNull( $this->yoast->status()['backup'] );
 		$this->assertFalse( get_option( YoastSource::BACKUP_OPTION ) );
@@ -378,6 +398,55 @@ final class YoastSourceTest extends WP_UnitTestCase {
 		$this->import_all();
 		$yoast = new YoastSource( $this->importer );
 		$this->assertFalse( YoastSource::premium_active() );
-		$this->assertSame( 1, $yoast->remove( [ [ 'origin' => 'fy-gone', 'format' => 'plain' ] ] )['removed'] );
+		$this->assertSame( 1, $yoast->remove( [ $this->item( 'fy-gone' ) ] )['removed'] );
+	}
+
+	public function test_a_regex_that_matched_the_query_string_is_never_removed(): void {
+		$this->seed();
+		$this->import_all();
+		$item = $this->item( '^/fy-search\\?q=(.*)', 'regex' );
+		$this->assertNotNull( $this->repo->regex_rule_by_source( $item['origin'] ), 'It is imported, with its note.' );
+
+		$result = $this->yoast->remove( [ $item ] );
+
+		$this->assertSame( 'not_covered', $result['items'][0]['result'] );
+		$this->assertSame( [ 0, 0, 1 ], [ $result['removed'], $result['not_found'], $result['not_covered'] ] );
+		$this->assertContains( $item['origin'], $this->base_origins() );
+		$this->assertNull( $this->yoast->status()['backup'] );
+	}
+
+	/**
+	 * @dataProvider edits
+	 */
+	public function test_an_entry_edited_in_yoast_after_the_import_is_not_removed( string $field, $value ): void {
+		$this->seed();
+		$this->import_all();
+		$base = get_option( YoastOptionStore::BASE_OPTION );
+		$this->assertSame( 'fy-old-page', $base[0]['origin'] );
+		$base[0][ $field ] = $value;
+		update_option( YoastOptionStore::BASE_OPTION, $base, false );
+
+		$result = $this->yoast->remove( [ $this->item( 'fy-old-page' ) ] );
+
+		$this->assertSame( 'not_found', $result['items'][0]['result'] );
+		$this->assertSame( [ 0, 1, 0 ], [ $result['removed'], $result['not_found'], $result['not_covered'] ] );
+		$this->assertContains( 'fy-old-page', $this->base_origins() );
+		$this->assertSame( $value, get_option( YoastOptionStore::BASE_OPTION )[0][ $field ] );
+		$this->assertNull( $this->yoast->status()['backup'] );
+	}
+
+	public static function edits(): array {
+		return [
+			'url'  => [ 'url', 'fy-somewhere-else' ],
+			'type' => [ 'type', 302 ],
+		];
+	}
+
+	public function test_an_unchanged_entry_with_a_numeric_string_type_is_removed(): void {
+		$this->seed();
+		$this->import_all();
+		$item = $this->item( 'fy-numeric-type' );
+		$this->assertSame( 301, $item['type'] );
+		$this->assertSame( 'removed', $this->yoast->remove( [ $item ] )['items'][0]['result'], 'Yoast stored type "301"; the client sends 301.' );
 	}
 }

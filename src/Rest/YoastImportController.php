@@ -61,6 +61,15 @@ final class YoastImportController extends BaseController {
 										'enum'     => [ 'plain', 'regex' ],
 										'required' => true,
 									],
+									'url'    => [
+										'type'      => 'string',
+										'maxLength' => 2048,
+										'required'  => true,
+									],
+									'type'   => [
+										'type'     => 'integer',
+										'required' => true,
+									],
 								],
 							],
 						]
@@ -116,7 +125,14 @@ final class YoastImportController extends BaseController {
 		return rest_ensure_response( $this->yoast->restore() );
 	}
 
-	public function delete_backup(): \WP_REST_Response {
+	/**
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function delete_backup( \WP_REST_Request $request ) {
+		$unknown = $this->reject_unknown( $request, [] );
+		if ( null !== $unknown ) {
+			return $unknown;
+		}
 		$this->yoast->delete_backup();
 		return rest_ensure_response( [ 'deleted' => true ] );
 	}

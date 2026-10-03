@@ -26,7 +26,7 @@ final class YoastOptionStore implements YoastStore {
 		foreach ( $items as $item ) {
 			$found = null;
 			foreach ( $base as $index => $entry ) {
-				if ( self::origin_of( $entry ) === $item['origin'] && $entry['format'] === $item['format'] ) {
+				if ( self::is_same( $entry, $item ) ) {
 					$found = $index;
 					break;
 				}
@@ -78,6 +78,22 @@ final class YoastOptionStore implements YoastStore {
 		];
 	}
 
+	/**
+	 * Whether a base row is exactly the removal item: same origin, format, url and (int) type. An
+	 * entry edited in Yoast since the import no longer matches.
+	 *
+	 * @param mixed $row  Base option row.
+	 * @param array $item { origin, format, url, type }.
+	 */
+	public static function is_same( $row, array $item ): bool {
+		return null !== self::origin_of( $row )
+			&& $row['origin'] === (string) $item['origin']
+			&& $row['format'] === (string) $item['format']
+			&& isset( $row['url'], $row['type'] ) && is_string( $row['url'] ) && is_scalar( $row['type'] )
+			&& $row['url'] === (string) $item['url']
+			&& (int) $row['type'] === (int) $item['type'];
+	}
+
 	private static function base(): array {
 		$base = get_option( self::BASE_OPTION, [] );
 		return is_array( $base ) ? array_values( $base ) : [];
@@ -106,6 +122,10 @@ final class YoastOptionStore implements YoastStore {
 		foreach ( $base as $row ) {
 			$origin = self::origin_of( $row );
 			if ( null !== $origin && isset( $export[ $row['format'] ] ) ) {
+				// Yoast keys plain redirects by the origin with its slashes trimmed ("/" stays "/").
+				if ( 'plain' === $row['format'] && '' !== trim( $origin, '/' ) ) {
+					$origin = trim( $origin, '/' );
+				}
 				$export[ $row['format'] ][ $origin ] = [
 					'url'  => isset( $row['url'] ) && is_string( $row['url'] ) ? $row['url'] : '',
 					'type' => isset( $row['type'] ) ? (int) $row['type'] : 301,
