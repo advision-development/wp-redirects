@@ -21,7 +21,7 @@ All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time ho
 | `adv_redirects_hit_tracking_enabled` | `bool $enabled` | `true` | Disable hit counting. |
 | `adv_redirects_log_404` | `bool $log, string $path` | `true` | Skip logging specific 404s. |
 | `adv_redirects_404_excluded_extensions` | `string[] $extensions` | setting | File extensions never logged. |
-| `adv_redirects_import_rule` | `array\|false $rule, array $entry` | mapped rule | Change a rule mapped from a Redirection export, or return `false` to skip it. `$entry` is the raw export entry. Returning `false` or any non-array skips the rule (reason `filtered`); a rule whose `source` or `target` becomes unusable after filtering is skipped as `invalid_entry`. |
+| `adv_redirects_import_rule` | `array\|false $rule, array $entry, string $source` | mapped rule | Change a rule mapped by an import, or return `false` to skip it. `$source` is `redirection` (a Redirection export) or `yoast` (Yoast SEO Premium); `$entry` is the raw export entry or Yoast base-option entry `{ id, origin, url, type, format }`. Returning `false` or any non-array skips the rule (reason `filtered`); a rule whose `source` or `target` becomes unusable after filtering is skipped as `invalid_entry`. |
 
 ## Actions
 
@@ -36,6 +36,8 @@ All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time ho
 | `adv_redirects_auto_redirect_created` | `Rule $rule, WP_Post $post` | After the slug watcher creates a rule. |
 | `adv_redirects_404_logged` | `string $path` | After a 404 is recorded. |
 | `adv_redirects_import_completed` | `array $counts` | After each import batch is applied (`total`, `created`, `updated`, `skipped`). `/import` detects in-file duplicates only within a batch, so clients should send only the entries the preview marked `new` or `overwrite`, in file order (the admin UI does this). |
+| `adv_redirects_yoast_removed` | `array $entries` | After redirects are removed from Yoast SEO Premium's storage (Import tab, "Remove from Yoast"). `$entries` are the removed base-option entries `{ origin, url, type, format }`; they are also kept in the `adv_redirects_yoast_backup` option. |
+| `adv_redirects_yoast_restored` | `array $entries` | After backed-up redirects are put back into Yoast SEO Premium ("Restore to Yoast"). Entries Yoast already had again are not included. |
 
 ## PHP API
 

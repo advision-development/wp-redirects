@@ -82,11 +82,11 @@ final class RestImportTest extends Adv_Redirects_Rest_TestCase {
 		$one = [ $this->export['redirects'][0] ];
 
 		$bad_source           = $this->body( $one );
-		$bad_source['source'] = 'yoast';
+		$bad_source['source'] = 'rankmath';
 		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $bad_source )->get_status() );
 
 		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $this->body( [] ) )->get_status() );
-		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $this->body( array_fill( 0, 2001, $one[0] ) ) )->get_status() );
+		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $this->body( array_fill( 0, 5001, $one[0] ) ) )->get_status() );
 		$this->assertSame( 400, $this->rest( 'POST', '/import', $this->body( array_fill( 0, 51, $one[0] ), false ) )->get_status() );
 
 		$extra         = $this->body( $one );
