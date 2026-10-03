@@ -131,6 +131,17 @@ export default function RuleRow( {
 					<code>{ rule.target }</code>
 				) }
 				<div className="adv-redirects-flags">
+					{ rule.trailing_slash && ! isGone( rule.status_code ) && (
+						<span
+							className="adv-redirects-flag"
+							title={ __(
+								'Adds a trailing slash to the target after captures are filled in, as Yoast SEO Premium did.',
+								'wp-redirects'
+							) }
+						>
+							{ __( 'Adds trailing slash', 'wp-redirects' ) }
+						</span>
+					) }
 					{ rule.origin === 'auto' && rule.created_via !== 'slug' && (
 						<span className="adv-redirects-flag">
 							{ __( 'Auto', 'wp-redirects' ) }

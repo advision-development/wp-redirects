@@ -131,6 +131,14 @@ test.describe( 'Import from Yoast SEO Premium', () => {
 			)
 		).toBeVisible();
 		expect( yoastCount() ).toBe( 26 );
+
+		// Yoast capture targets keep Yoast's trailing slash through a per-rule flag.
+		await page.getByRole( 'tab', { name: 'Redirects' } ).click();
+		await expect(
+			page
+				.getByRole( 'tabpanel', { name: 'Redirects' } )
+				.getByText( 'Adds trailing slash' )
+		).toHaveCount( 2 );
 	} );
 
 	test( '"Not now" hides the notice in this browser', async ( {
