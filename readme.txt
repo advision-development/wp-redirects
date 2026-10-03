@@ -4,7 +4,7 @@ Tags: redirects, 301, 404, regex, seo
 Requires at least: 6.6
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -28,8 +28,9 @@ Exact and regex redirects with selectable status codes, object-cached matching, 
 
 == Changelog ==
 
-= Unreleased =
-* Import from Yoast SEO Premium.
+= 1.1.0 =
+* Import from Yoast SEO Premium: detect its redirects, preview and import them, then remove the imported ones from Yoast with a backup you can restore.
+* The import preview now takes up to 5,000 redirects (was 2,000).
 * Never redirects a URL to itself. A rule whose target resolves to the requested URL (for example a regex `^/forum/(.*)` to `/forum/$1`) is skipped for that request, so case-only and trailing-slash-only redirects are now allowed and end at their target. Chain checks and the Test URL tool follow the same rule.
 * Redirects can add a trailing slash to their target after captures are filled in (database schema v3). The Yoast import uses this so capture targets such as `forum/$1` keep Yoast's trailing slash, and the rules table labels these redirects.
 
