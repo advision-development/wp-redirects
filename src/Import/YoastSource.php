@@ -101,15 +101,20 @@ final class YoastSource {
 	 * holds it with the same origin and format and WP Redirects has a rule with the same conflict
 	 * key; anything else is left in Yoast.
 	 *
+	 * The backup is saved before anything is removed. If it cannot be saved, nothing is removed and a
+	 * WP_Error is returned.
+	 *
 	 * @param array<int,array{origin:string,format:string}> $items Redirects to remove.
+	 * @return array|\WP_Error
 	 */
-	public function remove( array $items ): array {
+	public function remove( array $items ) {
 		$items    = array_values( $items );
 		$base     = get_option( YoastOptionStore::BASE_OPTION, [] );
 		$base     = is_array( $base ) ? $base : [];
 		$trailing = Site::trailing_slash_permalinks();
 		$results  = [];
 		$rules    = [];
+		$entries  = [];
 
 		foreach ( $items as $key => $item ) {
 			$entry = self::find( $base, (string) $item['origin'], (string) $item['format'] );
@@ -122,7 +127,8 @@ final class YoastSource {
 				$results[ $key ] = 'not_covered';
 				continue;
 			}
-			$rules[ $key ] = $mapped['rule'];
+			$rules[ $key ]   = $mapped['rule'];
+			$entries[ $key ] = $entry;
 		}
 		foreach ( $this->importer->covered( $rules ) as $key => $covered ) {
 			$results[ $key ] = $covered ? 'removed' : 'not_covered';
@@ -141,22 +147,53 @@ final class YoastSource {
 
 		$removed = [];
 		if ( $wanted ) {
-			$removed = $this->store()->remove( array_values( $wanted ) )['removed'];
-			// Anything the store no longer found changed in Yoast after the check above.
-			$gone = [];
-			foreach ( $removed as $entry ) {
-				$gone[ $entry['format'] . ':' . $entry['origin'] ] = true;
+			$previous = $this->backup();
+			$now      = time();
+			$user     = get_current_user_id();
+
+			// Back up first: if the backup cannot be saved, Yoast is left untouched.
+			$planned = $previous;
+			foreach ( array_keys( $wanted ) as $key ) {
+				$planned[] = self::backup_row( $entries[ $key ], $now, $user );
 			}
-			foreach ( $wanted as $key => $item ) {
-				if ( ! isset( $gone[ $item['format'] . ':' . $item['origin'] ] ) ) {
-					$results[ $key ] = 'not_found';
+			if ( ! update_option( self::BACKUP_OPTION, $planned, false ) ) {
+				return new \WP_Error(
+					'adv_redirects_backup_failed',
+					__( 'The backup of the Yoast redirects could not be saved, so nothing was removed.', 'wp-redirects' ),
+					[ 'status' => 500 ]
+				);
+			}
+
+			$outcome   = $this->store()->remove( array_values( $wanted ) );
+			$removed   = $outcome['removed'];
+			$not_found = array_values( $outcome['not_found'] );
+
+			// Replace the planned backup with what the store really removed (a duplicate or an entry
+			// that changed in Yoast after the check above comes back in `not_found`). The later copy of
+			// a duplicate is the one the store reports, so match from the end of the request.
+			foreach ( array_reverse( array_keys( $wanted ) ) as $key ) {
+				$item = $wanted[ $key ];
+				foreach ( $not_found as $position => $missing ) {
+					if ( is_array( $missing ) && isset( $missing['origin'], $missing['format'] ) && $missing['origin'] === $item['origin'] && $missing['format'] === $item['format'] ) {
+						unset( $not_found[ $position ] );
+						$results[ $key ] = 'not_found';
+						break;
+					}
 				}
+			}
+
+			$final = $previous;
+			foreach ( $removed as $entry ) {
+				$final[] = self::backup_row( $entry, $now, $user );
+			}
+			if ( $final ) {
+				update_option( self::BACKUP_OPTION, $final, false );
+			} else {
+				delete_option( self::BACKUP_OPTION );
 			}
 		}
 
 		if ( $removed ) {
-			$this->append_backup( $removed );
-
 			/**
 			 * Fires after redirects are removed from Yoast SEO Premium.
 			 *
@@ -247,7 +284,7 @@ final class YoastSource {
 			array_filter(
 				$backup,
 				static function ( $row ) {
-					return is_array( $row ) && isset( $row['entry'] ) && is_array( $row['entry'] );
+					return self::valid_backup_row( $row );
 				}
 			)
 		);
@@ -264,18 +301,34 @@ final class YoastSource {
 		];
 	}
 
-	private function append_backup( array $removed ): void {
-		$backup = $this->backup();
-		$now    = time();
-		$user   = get_current_user_id();
-		foreach ( $removed as $entry ) {
-			$backup[] = [
-				// The two stores return differently shaped rows; keep one canonical shape.
-				'entry'      => array_intersect_key( $entry, array_flip( self::FIELDS ) ),
-				'removed_at' => $now,
-				'removed_by' => $user,
-			];
+	/**
+	 * A backup row is usable only if restoring it cannot write garbage into Yoast.
+	 *
+	 * @param mixed $row Backup option row.
+	 */
+	private static function valid_backup_row( $row ): bool {
+		if ( ! is_array( $row ) || ! isset( $row['removed_at'] ) || ! is_int( $row['removed_at'] ) || ! isset( $row['entry'] ) || ! is_array( $row['entry'] ) ) {
+			return false;
 		}
-		update_option( self::BACKUP_OPTION, $backup, false );
+		$entry = $row['entry'];
+		return isset( $entry['origin'], $entry['format'], $entry['url'], $entry['type'] )
+			&& is_string( $entry['origin'] )
+			&& is_string( $entry['format'] )
+			&& is_string( $entry['url'] )
+			&& ( is_int( $entry['type'] ) || ( is_string( $entry['type'] ) && ctype_digit( $entry['type'] ) ) );
+	}
+
+	/**
+	 * One backup row. The two stores return differently shaped rows; keep one canonical shape.
+	 *
+	 * @param array $entry Base-option entry.
+	 * @return array{entry:array,removed_at:int,removed_by:int}
+	 */
+	private static function backup_row( array $entry, int $removed_at, int $removed_by ): array {
+		return [
+			'entry'      => array_intersect_key( $entry, array_flip( self::FIELDS ) ),
+			'removed_at' => $removed_at,
+			'removed_by' => $removed_by,
+		];
 	}
 }
