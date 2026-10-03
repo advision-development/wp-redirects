@@ -1,7 +1,7 @@
 import { __, sprintf } from '@wordpress/i18n';
 import { errorMessage } from '../constants';
 
-export const MAX_PREVIEW = 2000;
+export const MAX_PREVIEW = 5000;
 export const BATCH_SIZE = 50;
 const MAX_ERRORS = 5;
 
@@ -344,6 +344,10 @@ export const NOTE_LABELS = {
 		'Imported as case-insensitive (WP Redirects always ignores case).',
 		'wp-redirects'
 	),
+	case_sensitive_source: __(
+		'Yoast matched this pattern case-sensitively; WP Redirects matches regardless of case.',
+		'wp-redirects'
+	),
 	trailing_slash_ignored: __(
 		'A trailing slash is ignored when matching.',
 		'wp-redirects'
@@ -366,7 +370,7 @@ export function buildReport( { summary, preview, importSkipped = [] } ) {
 	return {
 		generated: new Date().toISOString(),
 		file: {
-			plugin: 'redirection',
+			plugin: summary.plugin || 'redirection',
 			version: summary.version,
 			date: summary.date,
 		},

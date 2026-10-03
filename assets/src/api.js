@@ -62,4 +62,19 @@ export const api = {
 		} ),
 	importBatch: ( payload ) =>
 		apiFetch( { path: `${ NS }/import`, method: 'POST', data: payload } ),
+	yoastStatus: () => apiFetch( { path: `${ NS }/import/yoast` } ),
+	yoastRemove: ( entries ) =>
+		apiFetch( {
+			path: `${ NS }/import/yoast/remove`,
+			method: 'POST',
+			data: { entries },
+		} ),
+	yoastRestore: () =>
+		apiFetch( {
+			path: `${ NS }/import/yoast/restore`,
+			method: 'POST',
+			data: {},
+		} ),
+	yoastDeleteBackup: () =>
+		apiFetch( { path: `${ NS }/import/yoast/backup`, method: 'DELETE' } ),
 };
