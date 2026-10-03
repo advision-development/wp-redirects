@@ -21,11 +21,15 @@ Exact and regex redirects with selectable status codes, object-cached matching, 
 * Test-a-URL tool
 * 404 log with one-click "create redirect"
 * Import redirects from a Redirection plugin JSON export, with a dry-run preview (new, overwrite, skipped) and batched import
-* Imports take up to 2,000 redirects per file; very large files may need splitting, depending on your server's upload limits
+* Import redirects from Yoast SEO Premium, then remove them from Yoast with a backup you can restore
+* Imports take up to 5,000 redirects per file; very large files may need splitting, depending on your server's upload limits
 * Shows who created each redirect (and how: manually, imported, slug change or API) and who last edited it
 * Actions and filters for developers (see docs/hooks.md)
 
 == Changelog ==
+
+= Unreleased =
+* Import from Yoast SEO Premium.
 
 = 1.0.0 =
 * Initial release.

@@ -26,7 +26,7 @@ WordPress plugin: exact + regex redirects, object-cached compiled rule set, hit 
 - `src/Matching/`: pure matching core (unit-tested) + `RuleCache`, `Redirector`
 - `src/Redirects/`: `Rule`, `Repository` (single write choke point; flushes cache and fires hooks), `Validator`, `ChainResolver`
 - `src/Tracking/`: hit counting, 404 log
-- `src/Import/`: `RedirectionMapper` (pure mapping of Redirection export entries) and `Importer` (preview/import through Validator + Repository); UI in `assets/src/components/ImportTab.js`
+- `src/Import/`: `RedirectionMapper` and `YoastMapper` (pure mapping of Redirection export entries and Yoast SEO Premium base-option entries), `Importer` (preview/import through Validator + Repository, per `source`), `YoastSource` (detects Yoast redirects, removes imported ones with a backup, restores) writing through `YoastOptionStore` or, with Premium active, `YoastManagerStore`; UI in `assets/src/components/ImportTab.js`, `YoastNotices.js`, `YoastRemoveCard.js`
 - `src/Rest/`: REST controllers (`adv-redirects/v1`)
 - `src/Admin/AdminPage.php` + `assets/src/`: React admin → `build/` (gitignored)
 
@@ -53,6 +53,7 @@ npm run test:e2e              # Playwright against wp-env tests site
 ## Testing notes
 
 - Integration tests run inside wp-env (`npm run env:start` first). The REST base class `tests/integration/support/RestTestCase.php` uses the plugin's own route registration.
+- Yoast import tests use the hand-made `tests/fixtures/yoast-redirects-sample.json`. Yoast SEO Premium is not installed in wp-env; `tests/integration/doubles/yoast-premium-doubles.php` stands in for its redirect classes (loaded only by the Yoast store and source tests). The e2e test seeds Yoast's options with wp-cli.
 - Hit counting buffers in the object cache only when `wp_using_ext_object_cache()` is true; tests toggle it.
 - e2e relies on these accessible names: Source, Target, Test a URL, Add redirect, Test. Keep them stable or update `tests/e2e/redirects.spec.js`.
 - Integration tests and e2e share the wp-env tests database (the integration bootstrap overrides home/siteurl to `http://example.org`). If integration tests ran in the same env, run `npx wp-env clean tests && npm run env:start` before `npm run test:e2e`. CI runs them in separate jobs, each with a fresh env.
