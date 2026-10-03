@@ -674,3 +674,21 @@
 		display: none;
 	}
 }
+
+.adv-redirects-yoast {
+	.components-notice {
+		margin: 0 0 16px;
+	}
+
+	.components-notice p {
+		margin: 0 0 8px;
+	}
+}
+
+.adv-redirects-yoast__message:empty {
+	display: none;
+}
+
+.adv-redirects-yoast-remove {
+	margin: 16px 0;
+}

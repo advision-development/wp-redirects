@@ -1,5 +1,5 @@
 import { Button, Notice, Spinner } from '@wordpress/components';
-import { useEffect, useRef, useState } from '@wordpress/element';
+import { useCallback, useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
 import {
@@ -11,7 +11,15 @@ import {
 	importErrorMessage,
 	stripExport,
 } from '../utils/redirectionImport';
+import {
+	batchPayload,
+	entrySource,
+	removalCandidates,
+	yoastPayload,
+} from '../utils/yoastImport';
 import ImportPreview from './ImportPreview';
+import YoastNotices from './YoastNotices';
+import YoastRemoveCard from './YoastRemoveCard';
 
 function downloadJson( data, filename ) {
 	const url = URL.createObjectURL(
@@ -48,6 +56,19 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 	const [ requestError, setRequestError ] = useState( '' );
 	const [ dragging, setDragging ] = useState( false );
 	const [ cancelling, setCancelling ] = useState( false );
+	const [ yoast, setYoast ] = useState( null );
+
+	const loadYoast = useCallback( async () => {
+		try {
+			setYoast( await api.yoastStatus() );
+		} catch {
+			setYoast( null );
+		}
+	}, [] );
+
+	useEffect( () => {
+		loadYoast();
+	}, [ loadYoast ] );
 
 	// If the tab is ever unmounted mid-import, stop posting further batches.
 	useEffect( () => {
@@ -117,11 +138,11 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 		setPhase( 'checked' );
 	};
 
-	const runPreview = async () => {
+	const runPreview = async ( data = payload ) => {
 		setPhase( 'previewing' );
 		setRequestError( '' );
 		try {
-			setPreview( await api.importPreview( payload ) );
+			setPreview( await api.importPreview( data ) );
 			setPhase( 'previewed' );
 		} catch ( error ) {
 			setRequestError( importErrorMessage( error ) );
@@ -129,9 +150,16 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 		}
 	};
 
+	const startYoast = () => {
+		const data = yoastPayload( yoast.entries );
+		reset();
+		setPayload( data );
+		runPreview( data );
+	};
+
 	const runImport = async () => {
 		const entries = importableEntries( preview, payload.redirects );
-		const totals = { created: 0, updated: 0, skipped: [] };
+		const totals = { created: 0, updated: 0, skipped: [], imported: [] };
 		let done = 0;
 		cancelRef.current = false;
 		setCancelling( false );
@@ -142,20 +170,23 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 				if ( cancelRef.current ) {
 					break;
 				}
-				const response = await api.importBatch( {
-					source: 'redirection',
-					groups: payload.groups,
-					redirects: batch.map( ( item ) => item.entry ),
-				} );
+				const response = await api.importBatch(
+					batchPayload(
+						payload,
+						batch.map( ( item ) => item.entry )
+					)
+				);
 				response.entries.forEach( ( item, position ) => {
 					if ( item.result === 'created' ) {
 						totals.created++;
+						totals.imported.push( batch[ position ].index );
 					} else if ( item.result === 'updated' ) {
 						totals.updated++;
+						totals.imported.push( batch[ position ].index );
 					} else {
 						totals.skipped.push( {
 							index: batch[ position ].index,
-							source: batch[ position ].entry.url,
+							source: entrySource( batch[ position ].entry ),
 							error: item.error,
 						} );
 					}
@@ -179,9 +210,20 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 			setPhase( 'failed' );
 		} finally {
 			onImported();
+			if ( payload.source === 'yoast' ) {
+				loadYoast();
+			}
 		}
 	};
 
+	const yoastFlow = Boolean( payload && payload.source === 'yoast' );
+	const reportSummary = yoastFlow
+		? {
+				plugin: 'yoast',
+				version: ( yoast && yoast.premium_version ) || '',
+				date: '',
+			}
+		: check && check.summary;
 	const counts = preview ? preview.counts : null;
 	const importCount = counts ? counts.new + counts.overwrite : 0;
 	const busy = phase === 'previewing' || phase === 'importing';
@@ -256,6 +298,13 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 
 	return (
 		<>
+			<YoastNotices
+				status={ yoast }
+				busy={ busy }
+				flowActive={ yoastFlow && phase !== 'idle' }
+				onPreview={ startYoast }
+				onChanged={ loadYoast }
+			/>
 			<section className="adv-redirects-card adv-redirects-import">
 				<h2 className="adv-redirects-card__title">
 					{ __( 'Import from Redirection', 'wp-redirects' ) }
@@ -383,7 +432,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 							variant="primary"
 							isBusy={ phase === 'previewing' }
 							disabled={ busy }
-							onClick={ runPreview }
+							onClick={ () => runPreview() }
 							__next40pxDefaultSize
 						>
 							{ __( 'Preview import', 'wp-redirects' ) }
@@ -495,13 +544,24 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 							{ resultMessage }
 						</Notice>
 					</div>
+					{ yoastFlow && phase === 'done' && ! result.cancelled && (
+						<YoastRemoveCard
+							candidates={ removalCandidates(
+								preview,
+								payload.redirects,
+								result.imported
+							) }
+							status={ yoast }
+							onDone={ loadYoast }
+						/>
+					) }
 					<div className="adv-redirects-import__actions">
 						<Button
 							variant="secondary"
 							onClick={ () =>
 								downloadJson(
 									buildReport( {
-										summary: check.summary,
+										summary: reportSummary,
 										preview,
 										importSkipped: result.skipped,
 									} ),
