@@ -89,6 +89,9 @@ test.describe( 'Import from Yoast SEO Premium', () => {
 		await page
 			.getByRole( 'button', { name: 'Preview Yoast import' } )
 			.click();
+		await expect(
+			panel.getByRole( 'heading', { name: 'Preview: Yoast SEO Premium' } )
+		).toBeVisible();
 		await expect( page.getByText( 'New (16)' ) ).toBeVisible();
 		await expect( page.getByText( 'Skipped (9)' ) ).toBeVisible();
 		await expect( page.getByText( 'Superseded (1)' ) ).toBeVisible();
@@ -105,16 +108,16 @@ test.describe( 'Import from Yoast SEO Premium', () => {
 			)
 		).toBeVisible();
 		await expect(
-			panel.getByText( /Remove 17 imported redirects from Yoast\?/ )
+			panel.getByText( /Remove 16 imported redirects from Yoast\?/ )
 		).toBeVisible();
 
 		await page.getByRole( 'button', { name: 'Remove from Yoast' } ).click();
 		await expect(
-			panel.getByText( 'Removed 17 redirects from Yoast.' )
+			panel.getByText( 'Removed 16 redirects from Yoast.' )
 		).toBeVisible();
-		expect( yoastCount() ).toBe( 9 );
+		expect( yoastCount() ).toBe( 10 );
 		await expect(
-			panel.getByText( /17 redirects removed from Yoast, last on/ )
+			panel.getByText( /16 redirects removed from Yoast, last on/ )
 		).toBeVisible();
 
 		await page.getByRole( 'button', { name: 'Restore to Yoast' } ).click();
@@ -124,7 +127,7 @@ test.describe( 'Import from Yoast SEO Premium', () => {
 			.click();
 		await expect(
 			panel.getByText(
-				'Restored 17 redirects to Yoast; 0 were already there.'
+				'Restored 16 redirects to Yoast; 0 were already there.'
 			)
 		).toBeVisible();
 		expect( yoastCount() ).toBe( 26 );

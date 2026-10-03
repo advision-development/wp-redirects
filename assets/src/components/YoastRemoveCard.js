@@ -4,12 +4,25 @@ import { __, _n, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage } from '../constants';
 import { chunk } from '../utils/redirectionImport';
-import { REMOVE_CHUNK, serverModeWarning } from '../utils/yoastImport';
+import {
+	pendingRemovals,
+	REMOVE_CHUNK,
+	serverModeWarning,
+} from '../utils/yoastImport';
 
-export default function YoastRemoveCard( { candidates, status, onDone } ) {
+export default function YoastRemoveCard( {
+	candidates,
+	status,
+	onDone,
+	onRemovingChange = () => {},
+} ) {
 	// ask | removing | removed | kept | failed
 	const [ state, setState ] = useState( 'ask' );
 	const [ done, setDone ] = useState( 0 );
+	// How many items the current run sends (a retry skips the ones already removed).
+	const [ sending, setSending ] = useState( 0 );
+	// Response items received so far, across runs.
+	const reported = useRef( [] );
 	const [ totals, setTotals ] = useState( {
 		removed: 0,
 		notCovered: 0,
@@ -33,14 +46,21 @@ export default function YoastRemoveCard( { candidates, status, onDone } ) {
 	}
 
 	const remove = async () => {
-		const sum = { removed: 0, notCovered: 0, notFound: 0 };
+		const pending = pendingRemovals( candidates, reported.current );
+		// Removed counts add up across runs; the rest is counted again by this run.
+		const sum = { removed: totals.removed, notCovered: 0, notFound: 0 };
 		let sent = 0;
 		setState( 'removing' );
+		setSending( pending.length );
 		setDone( 0 );
 		setError( '' );
+		onRemovingChange( true );
 		try {
-			for ( const items of chunk( candidates, REMOVE_CHUNK ) ) {
+			for ( const items of chunk( pending, REMOVE_CHUNK ) ) {
 				const response = await api.yoastRemove( items );
+				reported.current = reported.current.concat(
+					response.items || []
+				);
 				sum.removed += response.removed;
 				sum.notCovered += response.not_covered;
 				sum.notFound += response.not_found;
@@ -54,6 +74,7 @@ export default function YoastRemoveCard( { candidates, status, onDone } ) {
 			setError( errorMessage( requestError ) );
 			setState( 'failed' );
 		} finally {
+			onRemovingChange( false );
 			onDone();
 		}
 	};
@@ -144,7 +165,7 @@ export default function YoastRemoveCard( { candidates, status, onDone } ) {
 							/* translators: 1: processed so far, 2: total */
 							__( 'Removing %1$d of %2$d…', 'wp-redirects' ),
 							done,
-							candidates.length
+							sending
 						) }{ ' ' }
 						<Spinner />
 					</>

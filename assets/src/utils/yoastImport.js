@@ -35,24 +35,54 @@ export function entrySource( entry ) {
 
 /**
  * What to remove from Yoast after an import: the entries the import confirmed as created or
- * updated, plus the superseded ones (their winner now answers those URLs). The server still
- * checks each one against the stored rules before removing it.
+ * updated, plus the superseded ones (their winner now answers those URLs). A regex that matched
+ * the query string (note `regex_query`) stays in Yoast: WP Redirects matches regex against the
+ * path only. Each item carries the entry's url and type, so the server removes it only if Yoast
+ * still holds it unchanged, and checks it against the stored rules first.
  *
  * @param {Object}   preview         Preview response.
  * @param {Object[]} redirects       The entries the preview was built from.
  * @param {number[]} importedIndexes Preview indexes the import reported as created or updated.
- * @return {Array<{origin: string, format: string}>} Items for /import/yoast/remove.
+ * @return {Array<{origin: string, format: string, url: string, type: number}>} Items for /import/yoast/remove.
  */
 export function removalCandidates( preview, redirects, importedIndexes ) {
 	const imported = new Set( importedIndexes );
 	return preview.entries
 		.filter(
 			( entry ) =>
-				imported.has( entry.index ) || entry.status === 'superseded'
+				( imported.has( entry.index ) ||
+					entry.status === 'superseded' ) &&
+				! ( entry.notes || [] ).includes( 'regex_query' )
 		)
 		.map( ( entry ) => redirects[ entry.index ] )
 		.filter( Boolean )
-		.map( ( entry ) => ( { origin: entry.origin, format: entry.format } ) );
+		.map( ( entry ) => ( {
+			origin: entry.origin,
+			format: entry.format,
+			url: entry.url,
+			type: parseInt( entry.type, 10 ),
+		} ) );
+}
+
+function removalKey( item ) {
+	return `${ item.format }\u0000${ item.origin }`;
+}
+
+/**
+ * The candidates still to send: a retry after a failed removal skips the items an earlier
+ * response already reported as removed.
+ *
+ * @param {Object[]} candidates From removalCandidates().
+ * @param {Object[]} reported   Response `items` ({ origin, format, result }) received so far.
+ * @return {Object[]} Candidates not yet removed.
+ */
+export function pendingRemovals( candidates, reported ) {
+	const removed = new Set(
+		reported
+			.filter( ( item ) => item.result === 'removed' )
+			.map( removalKey )
+	);
+	return candidates.filter( ( item ) => ! removed.has( removalKey( item ) ) );
 }
 
 export function noticeHidden() {
@@ -81,7 +111,7 @@ export function serverModeWarning( status ) {
 				'wp-redirects'
 			)
 		: __(
-				"Yoast's redirects are still in your server configuration and keep working until that block is removed. WP Redirects does not edit server files.",
+				'Yoast’s redirects are still in your server configuration and keep working until that block is removed. WP Redirects does not edit server files.',
 				'wp-redirects'
 			);
 }

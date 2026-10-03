@@ -5,6 +5,7 @@ import {
 	hideNotice,
 	NOTICE_KEY,
 	noticeHidden,
+	pendingRemovals,
 	REMOVE_CHUNK,
 	removalCandidates,
 	serverModeWarning,
@@ -57,26 +58,85 @@ describe( 'payloads', () => {
 describe( 'removalCandidates', () => {
 	const preview = {
 		entries: [
-			{ index: 0, status: 'new' },
-			{ index: 1, status: 'new' },
-			{ index: 2, status: 'superseded' },
-			{ index: 13, status: 'skipped' },
+			{ index: 0, status: 'new', notes: [] },
+			{ index: 1, status: 'new', notes: [] },
+			{ index: 2, status: 'superseded', notes: [] },
+			{ index: 5, status: 'new', notes: [] },
+			{ index: 13, status: 'skipped', notes: [] },
+			{
+				index: 17,
+				status: 'new',
+				notes: [ 'case_sensitive_source', 'regex_query' ],
+			},
 			{ index: 24, status: 'new' },
 		],
 	};
 
 	it( 'takes imported entries and superseded ones, never skipped ones', () => {
-		expect( removalCandidates( preview, entries, [ 0, 24 ] ) ).toEqual( [
-			{ origin: 'fy-old-page', format: 'plain' },
-			{ origin: 'fy-case-page', format: 'plain' },
-			{ origin: 'fy-numeric-type', format: 'plain' },
+		expect( removalCandidates( preview, entries, [ 0, 5, 24 ] ) ).toEqual( [
+			{
+				origin: 'fy-old-page',
+				format: 'plain',
+				url: 'fy-new-page',
+				type: 301,
+			},
+			{
+				origin: 'fy-case-page',
+				format: 'plain',
+				url: 'fy-other',
+				type: 302,
+			},
+			{ origin: 'fy-gone', format: 'plain', url: '', type: 410 },
+			{
+				origin: 'fy-numeric-type',
+				format: 'plain',
+				url: 'fy-n',
+				type: 301,
+			},
 		] );
 	} );
 
 	it( 'leaves out entries the import did not confirm', () => {
 		expect( removalCandidates( preview, entries, [] ) ).toEqual( [
-			{ origin: 'fy-case-page', format: 'plain' },
+			{
+				origin: 'fy-case-page',
+				format: 'plain',
+				url: 'fy-other',
+				type: 302,
+			},
 		] );
+	} );
+
+	it( 'keeps a regex that matched the query string in Yoast', () => {
+		const origins = removalCandidates( preview, entries, [ 17 ] ).map(
+			( item ) => item.origin
+		);
+		expect( entries[ 17 ].origin ).toBe( '^/fy-search\\?q=(.*)' );
+		expect( origins ).not.toContain( entries[ 17 ].origin );
+	} );
+} );
+
+describe( 'pendingRemovals', () => {
+	const candidates = [
+		{ origin: 'a', format: 'plain', url: 'x', type: 301 },
+		{ origin: 'a', format: 'regex', url: 'y', type: 301 },
+		{ origin: 'b', format: 'plain', url: '', type: 410 },
+		{ origin: 'c', format: 'plain', url: 'z', type: 302 },
+	];
+
+	it( 'sends everything the first time', () => {
+		expect( pendingRemovals( candidates, [] ) ).toEqual( candidates );
+	} );
+
+	it( 'skips only the items already reported removed', () => {
+		const reported = [
+			{ origin: 'a', format: 'plain', result: 'removed' },
+			{ origin: 'b', format: 'plain', result: 'not_covered' },
+			{ origin: 'c', format: 'plain', result: 'not_found' },
+		];
+		expect( pendingRemovals( candidates, reported ) ).toEqual(
+			candidates.slice( 1 )
+		);
 	} );
 } );
 
@@ -127,6 +187,7 @@ describe( 'serverModeWarning', () => {
 		} );
 		expect( active ).toMatch( /reload/ );
 		expect( inactive ).toMatch( /does not edit server files/ );
+		expect( inactive ).toMatch( /^Yoast’s redirects/ );
 	} );
 } );
 

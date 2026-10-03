@@ -57,12 +57,16 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 	const [ dragging, setDragging ] = useState( false );
 	const [ cancelling, setCancelling ] = useState( false );
 	const [ yoast, setYoast ] = useState( null );
+	const [ yoastFailed, setYoastFailed ] = useState( false );
+	const [ yoastRemoving, setYoastRemoving ] = useState( false );
 
 	const loadYoast = useCallback( async () => {
 		try {
 			setYoast( await api.yoastStatus() );
+			setYoastFailed( false );
 		} catch {
 			setYoast( null );
+			setYoastFailed( true );
 		}
 	}, [] );
 
@@ -152,6 +156,8 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 
 	const startYoast = () => {
 		const data = yoastPayload( yoast.entries );
+		// A file read still in flight must not replace the Yoast payload when it finishes.
+		++readCounter.current;
 		reset();
 		setPayload( data );
 		runPreview( data );
@@ -298,18 +304,27 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 
 	return (
 		<>
-			<YoastNotices
-				status={ yoast }
-				busy={ busy }
-				previewing={ yoastFlow && phase === 'previewing' }
-				previewError={ yoastFlow ? requestError : '' }
-				flowActive={
-					yoastFlow &&
-					! [ 'idle', 'previewing', 'checked' ].includes( phase )
-				}
-				onPreview={ startYoast }
-				onChanged={ loadYoast }
-			/>
+			{ yoastFailed ? (
+				<Notice status="error" isDismissible={ false }>
+					{ __(
+						'Couldn’t check for Yoast SEO Premium redirects.',
+						'wp-redirects'
+					) }
+				</Notice>
+			) : (
+				<YoastNotices
+					status={ yoast }
+					busy={ busy || yoastRemoving }
+					previewing={ yoastFlow && phase === 'previewing' }
+					previewError={ yoastFlow ? requestError : '' }
+					flowActive={
+						yoastFlow &&
+						! [ 'idle', 'previewing', 'checked' ].includes( phase )
+					}
+					onPreview={ startYoast }
+					onChanged={ loadYoast }
+				/>
+			) }
 			<section className="adv-redirects-card adv-redirects-import">
 				<h2 className="adv-redirects-card__title">
 					{ __( 'Import from Redirection', 'wp-redirects' ) }
@@ -452,7 +467,9 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 						ref={ previewHeadingRef }
 						tabIndex={ -1 }
 					>
-						{ __( 'Preview', 'wp-redirects' ) }
+						{ yoastFlow
+							? __( 'Preview: Yoast SEO Premium', 'wp-redirects' )
+							: __( 'Preview', 'wp-redirects' ) }
 					</h2>
 					<ImportPreview preview={ preview } />
 					{ phase === 'previewed' && (
@@ -558,6 +575,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 							) }
 							status={ yoast }
 							onDone={ loadYoast }
+							onRemovingChange={ setYoastRemoving }
 						/>
 					) }
 					<div className="adv-redirects-import__actions">

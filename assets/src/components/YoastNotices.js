@@ -64,8 +64,10 @@ export default function YoastNotices( {
 				setMessage(
 					sprintf(
 						/* translators: 1: redirects restored, 2: redirects Yoast already had */
-						__(
+						_n(
+							'Restored %1$d redirect to Yoast; %2$d were already there.',
 							'Restored %1$d redirects to Yoast; %2$d were already there.',
+							result.restored,
 							'wp-redirects'
 						),
 						result.restored,
