@@ -142,12 +142,32 @@ test.describe( 'Import from Yoast SEO Premium', () => {
 			panel.getByText( /Yoast SEO Premium redirects found/ )
 		).toHaveCount( 0 );
 
+		// The notice renders nothing until the status request resolves, so wait for it.
+		const isStatusResponse = ( response ) =>
+			( response.url().includes( 'import/yoast' ) ||
+				response.url().includes( 'import%2Fyoast' ) ) &&
+			response.request().method() === 'GET';
+
+		let statusLoaded = page.waitForResponse( isStatusResponse );
 		await page.reload();
 		await page.getByRole( 'tab', { name: 'Import' } ).click();
+		await statusLoaded;
 		await expect(
 			page
 				.getByRole( 'tabpanel', { name: 'Import' } )
 				.getByText( /Yoast SEO Premium redirects found/ )
 		).toHaveCount( 0 );
+
+		// Control: without the stored choice the notice is back, so the check above can fail.
+		await page.evaluate( () => window.localStorage.clear() );
+		statusLoaded = page.waitForResponse( isStatusResponse );
+		await page.reload();
+		await page.getByRole( 'tab', { name: 'Import' } ).click();
+		await statusLoaded;
+		await expect(
+			page
+				.getByRole( 'tabpanel', { name: 'Import' } )
+				.getByText( /Yoast SEO Premium redirects found/ )
+		).toBeVisible();
 	} );
 } );
