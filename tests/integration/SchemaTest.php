@@ -51,6 +51,31 @@ final class SchemaTest extends WP_UnitTestCase {
 		$wpdb->query( 'COMMIT' );
 	}
 
+	public function test_version_is_not_bumped_when_the_v3_column_is_missing(): void {
+		global $wpdb;
+		$table = Schema::redirects_table();
+		// DDL commits implicitly; the second upgrade restores the column and the cleanup is committed.
+		$wpdb->query( $wpdb->prepare( 'ALTER TABLE %i DROP COLUMN trailing_slash', $table ) );
+		update_option( Schema::VERSION_OPTION, '2' );
+		$fail = static function () {
+			return [];
+		};
+		// dbDelta then runs no CREATE/ALTER, as if the upgrade query had failed.
+		add_filter( 'dbdelta_create_queries', $fail );
+
+		Schema::maybe_upgrade();
+
+		remove_filter( 'dbdelta_create_queries', $fail );
+		$this->assertNotContains( 'trailing_slash', $wpdb->get_col( $wpdb->prepare( 'SHOW COLUMNS FROM %i', $table ) ) );
+		$this->assertSame( '2', get_option( Schema::VERSION_OPTION ), 'Left unbumped, so the upgrade retries on the next load.' );
+
+		Schema::maybe_upgrade();
+
+		$this->assertContains( 'trailing_slash', $wpdb->get_col( $wpdb->prepare( 'SHOW COLUMNS FROM %i', $table ) ) );
+		$this->assertSame( '3', get_option( Schema::VERSION_OPTION ) );
+		$wpdb->query( 'COMMIT' );
+	}
+
 	public function test_install_records_version(): void {
 		$this->assertSame( Schema::VERSION, get_option( Schema::VERSION_OPTION ) );
 	}

@@ -104,11 +104,12 @@ final class Importer {
 				$entry['status']      = 'overwrite';
 				$entry['existing_id'] = $existing->id;
 				$entry['current']     = [
-					'source'      => $existing->source,
-					'target'      => $existing->target,
-					'status_code' => $existing->status_code,
-					'enabled'     => $existing->enabled,
-					'note'        => $existing->note,
+					'source'         => $existing->source,
+					'target'         => $existing->target,
+					'status_code'    => $existing->status_code,
+					'enabled'        => $existing->enabled,
+					'trailing_slash' => $existing->trailing_slash,
+					'note'           => $existing->note,
 				];
 			}
 

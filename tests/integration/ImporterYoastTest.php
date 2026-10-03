@@ -135,6 +135,7 @@ final class ImporterYoastTest extends WP_UnitTestCase {
 		$preview = $this->importer->preview( $entries, [], Importer::SOURCE_YOAST );
 		$this->assertSame( 'overwrite', $preview['entries'][0]['status'] );
 		$this->assertTrue( $preview['entries'][0]['rule']['trailing_slash'] );
+		$this->assertFalse( $preview['entries'][0]['current']['trailing_slash'], 'The overwrite preview shows the stored flag.' );
 		$this->assertSame(
 			[ '/nfl-props', '/nfl/future-picks/', '/nfl/futures/', '/nfl-futures/' ],
 			$preview['entries'][3]['warnings'][0]['hops'],

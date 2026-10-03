@@ -72,7 +72,16 @@ final class Schema {
 ) {$charset};"
 		);
 
-		update_option( self::VERSION_OPTION, self::VERSION );
+		// Record the version only once the v3 column exists. Rule reads name it, so a failed ALTER
+		// with the version bumped would stop every redirect; left unbumped, the upgrade retries.
+		if ( self::has_column( $redirects, 'trailing_slash' ) ) {
+			update_option( self::VERSION_OPTION, self::VERSION );
+		}
+	}
+
+	private static function has_column( string $table, string $column ): bool {
+		global $wpdb;
+		return null !== $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM %i LIKE %s', $table, $column ) );
 	}
 
 	public static function maybe_upgrade(): void {
