@@ -4,7 +4,7 @@ use Advision\Redirects\Import\YoastManagerStore;
 use Advision\Redirects\Import\YoastOptionStore;
 use Advision\Redirects\Import\YoastStore;
 
-require_once __DIR__ . '/support/yoast-premium-doubles.php';
+require_once __DIR__ . '/doubles/yoast-premium-doubles.php';
 
 final class YoastStoreTest extends WP_UnitTestCase {
 
