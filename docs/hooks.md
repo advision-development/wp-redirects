@@ -1,6 +1,8 @@
 # WP Redirects: hooks reference
 
-All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time hooks have the shape `{ id, type, target, status }`. `Rule` objects (`Advision\Redirects\Redirects\Rule`) expose `id, type, source, target, status_code, position, enabled, origin, created_by, created_via, updated_by, note, hits, last_hit_at, created_at, updated_at`.
+All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time hooks have the shape `{ id, type, target, status, trailing_slash }`. `Rule` objects (`Advision\Redirects\Redirects\Rule`) expose `id, type, source, target, status_code, position, enabled, trailing_slash, origin, created_by, created_via, updated_by, note, hits, last_hit_at, created_at, updated_at`.
+
+`trailing_slash` (bool, schema v3) makes the runtime add `/` to a relative target after capture substitution, unless the template has a literal `?` or `#`, the resolved path has a `.`, or it already ends in `/` (Yoast SEO Premium's rule). `target` stays the stored template; the URL passed to `adv_redirects_target_url` already has the slash. `MatchResult` has a matching `trailing_slash` property.
 
 ## Filters
 
@@ -13,15 +15,15 @@ All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time ho
 | `adv_redirects_match` | `?MatchResult $match, string $path, string $query` | n/a | Override or suppress (return `null`) the match. |
 | `adv_redirects_status_code` | `int $code, array $rule` | rule status | Change the status. Unsupported codes cancel the redirect. |
 | `adv_redirects_forward_query_string` | `bool $forward, array $rule` | setting | Forward the incoming query string to the target. |
-| `adv_redirects_target_url` | `string $url, array $rule, string $path` | n/a | Change the final URL. Unsafe URLs cancel the redirect. |
+| `adv_redirects_target_url` | `string $url, array $rule, string $path` | n/a | Change the final URL. Unsafe URLs cancel the redirect. A URL equal to the requested URL (home URL + decoded path + raw query, compared byte for byte) is dropped too: WP Redirects never redirects a URL to itself. |
 | `adv_redirects_allowed_target_hosts` | `string[] $hosts` | `[]` (any) | Allowlist for external target hosts. |
-| `adv_redirects_compiled_ruleset` | `array $ruleset` | n/a | Alter the compiled rule set before it is cached. |
-| `adv_redirects_validate_rule` | `true\|WP_Error $valid, array $data, ?int $id` | `true` | Return a `WP_Error` to reject a rule. |
+| `adv_redirects_compiled_ruleset` | `array $ruleset` | n/a | Alter the compiled rule set before it is cached. Each exact and regex entry carries `trailing_slash`. |
+| `adv_redirects_validate_rule` | `true\|WP_Error $valid, array $data, ?int $id` | `true` | Return a `WP_Error` to reject a rule. `$data` is `{ type, source, target, status_code, enabled, trailing_slash, note }`. |
 | `adv_redirects_auto_redirect` | `array\|false $data, WP_Post $post, string $old, string $new` | n/a | Modify or cancel (`false`) slug-watcher redirects. |
 | `adv_redirects_hit_tracking_enabled` | `bool $enabled` | `true` | Disable hit counting. |
 | `adv_redirects_log_404` | `bool $log, string $path` | `true` | Skip logging specific 404s. |
 | `adv_redirects_404_excluded_extensions` | `string[] $extensions` | setting | File extensions never logged. |
-| `adv_redirects_import_rule` | `array\|false $rule, array $entry` | mapped rule | Change a rule mapped from a Redirection export, or return `false` to skip it. `$entry` is the raw export entry. Returning `false` or any non-array skips the rule (reason `filtered`); a rule whose `source` or `target` becomes unusable after filtering is skipped as `invalid_entry`. |
+| `adv_redirects_import_rule` | `array\|false $rule, array $entry, string $source` | mapped rule | Change a rule mapped by an import, or return `false` to skip it. `$rule` is `{ type, source, target, status_code, enabled, trailing_slash, note, origin }`; Yoast capture targets get `trailing_slash: true` when the permalink structure ends in `/`, every other mapped rule `false`. `$source` is `redirection` (a Redirection export) or `yoast` (Yoast SEO Premium); `$entry` is the raw export entry or Yoast base-option entry `{ id, origin, url, type, format }`. Returning `false` or any non-array skips the rule (reason `filtered`); a rule whose `source` or `target` becomes unusable after filtering is skipped as `invalid_entry`. |
 
 ## Actions
 
@@ -36,6 +38,8 @@ All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time ho
 | `adv_redirects_auto_redirect_created` | `Rule $rule, WP_Post $post` | After the slug watcher creates a rule. |
 | `adv_redirects_404_logged` | `string $path` | After a 404 is recorded. |
 | `adv_redirects_import_completed` | `array $counts` | After each import batch is applied (`total`, `created`, `updated`, `skipped`). `/import` detects in-file duplicates only within a batch, so clients should send only the entries the preview marked `new` or `overwrite`, in file order (the admin UI does this). |
+| `adv_redirects_yoast_removed` | `array $entries` | After redirects are removed from Yoast SEO Premium's storage (Import tab, "Remove from Yoast"). `$entries` are the removed base-option entries `{ origin, url, type, format }`; they are also kept in the `adv_redirects_yoast_backup` option. |
+| `adv_redirects_yoast_restored` | `array $entries` | After backed-up redirects are put back into Yoast SEO Premium ("Restore to Yoast"). Entries Yoast already had again are not included. |
 
 ## PHP API
 
@@ -45,6 +49,8 @@ $rule = adv_redirects_add( [
 	'source'      => '/old-page',
 	'target'      => '/new-page',  // null for 410/451
 	'status_code' => 301,
+	// Optional: add "/" to a relative target after capture substitution (regex rules mostly).
+	'trailing_slash' => false,
 ] );
 if ( is_wp_error( $rule ) ) {
 	error_log( $rule->get_error_message() );

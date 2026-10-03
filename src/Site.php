@@ -28,6 +28,13 @@ final class Site {
 		return is_string( $path ) ? rtrim( $path, '/' ) : '';
 	}
 
+	/**
+	 * Whether the permalink structure ends in a slash (Yoast then adds one to plain-path targets).
+	 */
+	public static function trailing_slash_permalinks(): bool {
+		return '/' === substr( (string) get_option( 'permalink_structure' ), -1 );
+	}
+
 	public static function normalizer(): PathNormalizer {
 		return new PathNormalizer( self::home_path() );
 	}

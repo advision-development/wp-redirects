@@ -9,6 +9,7 @@ namespace Advision\Redirects;
 
 use Advision\Redirects\Admin\AdminPage;
 use Advision\Redirects\Import\Importer;
+use Advision\Redirects\Import\YoastSource;
 use Advision\Redirects\Matching\Redirector;
 use Advision\Redirects\Matching\RuleCache;
 use Advision\Redirects\Redirects\ChainResolver;
@@ -19,6 +20,7 @@ use Advision\Redirects\Rest\NotFoundController;
 use Advision\Redirects\Rest\RedirectsController;
 use Advision\Redirects\Rest\SettingsController;
 use Advision\Redirects\Rest\TestController;
+use Advision\Redirects\Rest\YoastImportController;
 use Advision\Redirects\Tracking\HitTracker;
 use Advision\Redirects\Tracking\NotFoundLogger;
 use Advision\Redirects\Tracking\NotFoundRepository;
@@ -43,6 +45,7 @@ final class Plugin {
 	private SlugWatcher $slug_watcher;
 	private Cron $cron;
 	private Importer $importer;
+	private YoastSource $yoast;
 
 	public static function instance(): Plugin {
 		if ( null === self::$instance ) {
@@ -63,6 +66,7 @@ final class Plugin {
 		$this->slug_watcher     = new SlugWatcher( $this->repository, $this->validator );
 		$this->cron             = new Cron( $this->hit_tracker, $this->not_found );
 		$this->importer         = new Importer( $this->repository, $this->validator );
+		$this->yoast            = new YoastSource( $this->importer );
 	}
 
 	public function boot(): void {
@@ -103,6 +107,7 @@ final class Plugin {
 			new NotFoundController( $this->not_found ),
 			new SettingsController(),
 			new ImportController( $this->importer ),
+			new YoastImportController( $this->yoast ),
 		];
 		foreach ( $controllers as $controller ) {
 			$controller->register_routes();
@@ -152,5 +157,9 @@ final class Plugin {
 
 	public function importer(): Importer {
 		return $this->importer;
+	}
+
+	public function yoast(): YoastSource {
+		return $this->yoast;
 	}
 }

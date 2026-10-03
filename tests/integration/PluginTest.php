@@ -37,6 +37,11 @@ final class PluginTest extends WP_UnitTestCase {
 		$this->assertIsArray( $rule );
 		$this->assertSame( '/api-old', $rule['source'] );
 		$this->assertSame( 'api', $rule['created_via'] );
+		$this->assertFalse( $rule['trailing_slash'] );
+
+		$slashed = adv_redirects_add( [ 'type' => 'regex', 'source' => '^/api-forum/(.*)', 'target' => '/api-forum/$1', 'status_code' => 301, 'trailing_slash' => true ] );
+		$this->assertTrue( $slashed['trailing_slash'] );
+		adv_redirects_delete( $slashed['id'] );
 
 		$this->assertWPError( adv_redirects_add( [ 'type' => 'exact', 'source' => '/api-old', 'target' => '/x', 'status_code' => 301 ] ) );
 

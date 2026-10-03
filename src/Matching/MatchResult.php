@@ -22,11 +22,15 @@ final class MatchResult {
 	/** @var array<int,string> preg captures; index 0 is the full match. */
 	public array $captures;
 
-	public function __construct( int $rule_id, string $type, int $status, ?string $target, array $captures = [] ) {
-		$this->rule_id  = $rule_id;
-		$this->type     = $type;
-		$this->status   = $status;
-		$this->target   = $target;
-		$this->captures = $captures;
+	/** Whether the rule adds a trailing slash to its resolved target (see TargetResolver::trailing_slash()). */
+	public bool $trailing_slash;
+
+	public function __construct( int $rule_id, string $type, int $status, ?string $target, array $captures = [], bool $trailing_slash = false ) {
+		$this->rule_id        = $rule_id;
+		$this->type           = $type;
+		$this->status         = $status;
+		$this->target         = $target;
+		$this->captures       = $captures;
+		$this->trailing_slash = $trailing_slash;
 	}
 }

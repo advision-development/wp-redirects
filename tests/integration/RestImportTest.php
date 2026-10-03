@@ -41,7 +41,7 @@ final class RestImportTest extends Adv_Redirects_Rest_TestCase {
 	public function test_preview_and_import(): void {
 		$preview = $this->rest( 'POST', '/import/preview', $this->body( $this->export['redirects'] ) );
 		$this->assertSame( 200, $preview->get_status() );
-		$this->assertSame( 13, $preview->get_data()['counts']['new'] );
+		$this->assertSame( 14, $preview->get_data()['counts']['new'] );
 
 		$batch  = array_slice( $this->export['redirects'], 0, 2 );
 		$import = $this->rest( 'POST', '/import', $this->body( $batch, false ) );
@@ -82,11 +82,11 @@ final class RestImportTest extends Adv_Redirects_Rest_TestCase {
 		$one = [ $this->export['redirects'][0] ];
 
 		$bad_source           = $this->body( $one );
-		$bad_source['source'] = 'yoast';
+		$bad_source['source'] = 'rankmath';
 		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $bad_source )->get_status() );
 
 		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $this->body( [] ) )->get_status() );
-		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $this->body( array_fill( 0, 2001, $one[0] ) ) )->get_status() );
+		$this->assertSame( 400, $this->rest( 'POST', '/import/preview', $this->body( array_fill( 0, 5001, $one[0] ) ) )->get_status() );
 		$this->assertSame( 400, $this->rest( 'POST', '/import', $this->body( array_fill( 0, 51, $one[0] ), false ) )->get_status() );
 
 		$extra         = $this->body( $one );

@@ -127,4 +127,63 @@ final class TargetResolverTest extends TestCase {
 	public function test_overlong_result_after_query_merge_is_rejected(): void {
 		$this->assertNull( $this->resolver()->resolve( '/new', [], 'a=' . str_repeat( 'x', 2100 ), true ) );
 	}
+
+	public function test_trailing_slash_is_added_after_substitution(): void {
+		$this->assertSame( 'https://example.com/forum/abc/', $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], '', false, true ) );
+		$this->assertSame( 'https://example.com/forum/abc/?a=1', $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], 'a=1', true, true ), 'Added before the query merge.' );
+		$this->assertSame( 'https://example.com/forum/abc', $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], '', false ), 'No flag, no slash.' );
+		$this->assertSame( 'https://example.com/b/', $this->resolver()->resolve( '/b', [], '', false, true ), 'A fixed target with the flag gets it too.' );
+	}
+
+	public function test_trailing_slash_conditions(): void {
+		$this->assertSame( '/a/', TargetResolver::trailing_slash( '/$1', '/a', true ) );
+		$this->assertSame( '/a', TargetResolver::trailing_slash( '/$1', '/a', false ), 'Flag off.' );
+		$this->assertSame( '/a/', TargetResolver::trailing_slash( '/$1', '/a/', true ), 'Already ends in a slash.' );
+		$this->assertSame( '/guide.pdf', TargetResolver::trailing_slash( '/$1', '/guide.pdf', true ), 'A "." in the path (Yoast has_extension).' );
+		$this->assertSame( '/v2.0/page', TargetResolver::trailing_slash( '/$1/page', '/v2.0/page', true ), 'A "." in any segment.' );
+		$this->assertSame( '/a?x=1', TargetResolver::trailing_slash( '/a?x=$1', '/a?x=1', true ) );
+		$this->assertSame( '/a#top', TargetResolver::trailing_slash( '/a#top', '/a#top', true ), 'A literal "#" in the template.' );
+		$this->assertSame( 'https://x.test/a', TargetResolver::trailing_slash( 'https://x.test/$1', 'https://x.test/a', true ), 'Absolute targets are left alone.' );
+		$this->assertSame( '//x.test/a', TargetResolver::trailing_slash( '//x.test/$1', '//x.test/a', true ), 'Protocol-relative is not relative.' );
+	}
+
+	public function test_trailing_slash_then_self_check_matches_yoast(): void {
+		// /forum/(.*) → /forum/$1 with the flag: /forum/abc redirects once, /forum/abc/ does not.
+		$first = $this->resolver()->resolve( '/forum/$1', [ '/forum/abc', 'abc' ], '', false, true );
+		$this->assertFalse( TargetResolver::is_self( $first, 'https://example.com', '/forum/abc', '' ) );
+		$again = $this->resolver()->resolve( '/forum/$1', [ '/forum/abc/', 'abc/' ], '', false, true );
+		$this->assertTrue( TargetResolver::is_self( $again, 'https://example.com', '/forum/abc/', '' ) );
+	}
+
+	public function test_is_self_matches_a_byte_identical_url(): void {
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/forum/x', 'https://example.com', '/forum/x', '' ) );
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/a?b=1', 'https://example.com', '/a', 'b=1' ) );
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/', 'https://example.com', '/', '' ) );
+		$this->assertTrue( TargetResolver::is_self( '/odds/', '', '/odds/', '' ), 'Paths compare without a base.' );
+	}
+
+	public function test_is_self_decodes_the_target_path_like_the_request_path(): void {
+		// A capture re-encoded by substitute() is the same URL as the decoded request path it came from.
+		$url = $this->resolver()->resolve( '/forum/$1', [ '/forum/café x', 'café x' ], '', false );
+		$this->assertSame( 'https://example.com/forum/caf%C3%A9%20x', $url );
+		$this->assertTrue( TargetResolver::is_self( $url, 'https://example.com', '/forum/café x', '' ) );
+	}
+
+	public function test_is_self_is_case_and_slash_sensitive(): void {
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/nfl', 'https://example.com', '/NFL', '' ), 'A case fix still redirects.' );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/foo/', 'https://example.com', '/foo', '' ), 'A slash fix still redirects.' );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/foo', 'https://example.com', '/foo/', '' ) );
+		$this->assertFalse( TargetResolver::is_self( '/Foo', '', '/foo', '' ) );
+	}
+
+	public function test_is_self_compares_the_raw_query_and_the_whole_base(): void {
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a?b=1', 'https://example.com', '/a', '' ) );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a', 'https://example.com', '/a', 'b=1' ) );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a?b=2', 'https://example.com', '/a', 'b=1' ) );
+		$this->assertFalse( TargetResolver::is_self( 'http://example.com/a', 'https://example.com', '/a', '' ), 'An http to https redirect is not a self-redirect.' );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com.evil/a', 'https://example.com', '/a', '' ) );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a#top', 'https://example.com', '/a', '' ) );
+		$this->assertFalse( TargetResolver::is_self( '//example.com/a', '', '//example.com/a', '' ), 'A protocol-relative URL is not a path.' );
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/blog/a', 'https://example.com/blog/', '/a', '' ), 'A subdirectory home is part of the base.' );
+	}
 }

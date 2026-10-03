@@ -20,7 +20,7 @@ final class ChainResolver {
 
 	/**
 	 * @param string      $source_label Shown as the first hop.
-	 * @param string      $target       Where the rule points.
+	 * @param string      $target       Where the rule points, as the runtime resolves it (trailing slash applied).
 	 * @param array       $ruleset      Compiled rule set to follow.
 	 * @param string|null $source_key   Normalized key of an exact source, treated as already visited.
 	 * @param bool        $forward_query Whether the runtime forwards each request's query string to its target.
@@ -48,24 +48,40 @@ final class ChainResolver {
 				return self::result( false, $hops, $current );
 			}
 
+			$match = $matcher->match( $request );
+			if ( null === $match || null === $match->target ) {
+				return self::result( false, $hops, $current );
+			}
+			$next = TargetResolver::trailing_slash( $match->target, TargetResolver::substitute( $match->target, $match->captures, true ), $match->trailing_slash );
+			if ( $forward_query && '' !== $request['query'] ) {
+				$next = TargetResolver::merge_query( $next, $request['query'] );
+			}
+
+			// The redirector never redirects a URL to itself, so the chain ends here and is not a loop.
+			// Same check as the runtime: the hop made absolute the way TargetResolver::resolve() does,
+			// compared with the exact home URL (scheme, host case and port included).
+			if ( TargetResolver::is_self( self::absolute( $next ), Site::home_url(), $request['path'], $request['query'] ) ) {
+				return self::result( false, $hops, $current );
+			}
+
 			$key = $request['key'] . ( '' !== $request['query'] ? '?' . $request['query'] : '' );
 			if ( isset( $seen[ $key ] ) ) {
 				return self::result( true, $hops, $current );
 			}
 			$seen[ $key ] = true;
 
-			$match = $matcher->match( $request );
-			if ( null === $match || null === $match->target ) {
-				return self::result( false, $hops, $current );
-			}
-			$current = TargetResolver::substitute( $match->target, $match->captures, true );
-			if ( $forward_query && '' !== $request['query'] ) {
-				$current = TargetResolver::merge_query( $current, $request['query'] );
-			}
-			$hops[] = $current;
+			$current = $next;
+			$hops[]  = $current;
 		}
 
 		return self::result( true, $hops, $current );
+	}
+
+	/**
+	 * A hop as the runtime sends it: a relative target gets the home URL in front.
+	 */
+	private static function absolute( string $url ): string {
+		return '' !== $url && '/' === $url[0] && 0 !== strpos( $url, '//' ) ? Site::home_url() . $url : $url;
 	}
 
 	private static function result( bool $loop, array $hops, string $final_url ): array {

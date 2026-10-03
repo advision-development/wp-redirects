@@ -34,13 +34,14 @@ final class RedirectorTest extends WP_UnitTestCase {
 		parent::tear_down();
 	}
 
-	private function rule( string $type, string $source, ?string $target, int $status = 301 ): int {
+	private function rule( string $type, string $source, ?string $target, int $status = 301, bool $trailing_slash = false ): int {
 		return $this->repo->insert(
 			[
-				'type'        => $type,
-				'source'      => $source,
-				'target'      => $target,
-				'status_code' => $status,
+				'type'           => $type,
+				'source'         => $source,
+				'target'         => $target,
+				'status_code'    => $status,
+				'trailing_slash' => $trailing_slash,
 			]
 		)->id;
 	}
@@ -71,6 +72,47 @@ final class RedirectorTest extends WP_UnitTestCase {
 		$decision = $this->redirector->decide( '/blog/42', 'HEAD' );
 		$this->assertSame( 'http://example.org/posts/42', $decision['url'] );
 		$this->assertSame( 302, $decision['status'] );
+	}
+
+	public function test_never_redirects_to_the_requested_url_itself(): void {
+		$this->rule( 'regex', '^/fy-self/(.*)', '/fy-self/$1' );
+		$this->assertNull( $this->redirector->decide( '/fy-self/x', 'GET' ) );
+		$this->assertNull( $this->redirector->decide( '/fy-self/caf%C3%A9', 'GET' ), 'An encoded capture is the same URL.' );
+		$this->assertNull( $this->redirector->decide( '/fy-self/x?a=1', 'GET' ), 'The forwarded query makes it the same URL again.' );
+
+		Settings::update( [ 'forward_query_string' => false ] );
+		$this->assertSame( 'http://example.org/fy-self/x', $this->redirector->decide( '/fy-self/x?a=1', 'GET' )['url'], 'Dropping the query is a real redirect.' );
+	}
+
+	public function test_trailing_slash_flag_adds_the_slash_after_captures_like_yoast(): void {
+		$this->rule( 'regex', '^/forum/(.*)', '/forum/$1', 301, true );
+		$decision = $this->redirector->decide( '/forum/abc', 'GET' );
+		$this->assertSame( 'http://example.org/forum/abc/', $decision['url'] );
+		$this->assertTrue( $decision['rule']['trailing_slash'] );
+		$this->assertNull( $this->redirector->decide( '/forum/abc/', 'GET' ), 'The slashed URL is the request itself.' );
+		$this->assertSame( 'http://example.org/forum/abc/?a=1', $this->redirector->decide( '/forum/abc?a=1', 'GET' )['url'], 'The slash goes before the forwarded query.' );
+		$this->assertNull( $this->redirector->decide( '/forum/guide.pdf', 'GET' ), 'A "." in the path gets no slash, so it is the request itself.' );
+	}
+
+	public function test_case_and_slash_fixes_still_redirect(): void {
+		$this->rule( 'exact', '/NFL', '/nfl' );
+		$this->rule( 'exact', '/foo', '/foo/' );
+
+		$this->assertSame( 'http://example.org/nfl', $this->redirector->decide( '/NFL', 'GET' )['url'] );
+		$this->assertNull( $this->redirector->decide( '/nfl', 'GET' ), 'The target itself is not redirected.' );
+		$this->assertSame( 'http://example.org/foo/', $this->redirector->decide( '/foo', 'GET' )['url'] );
+		$this->assertNull( $this->redirector->decide( '/foo/', 'GET' ) );
+	}
+
+	public function test_target_url_filter_cannot_point_back_at_the_request(): void {
+		$this->rule( 'exact', '/old', '/new' );
+		add_filter(
+			'adv_redirects_target_url',
+			static function () {
+				return 'http://example.org/old';
+			}
+		);
+		$this->assertNull( $this->redirector->decide( '/old', 'GET' ) );
 	}
 
 	public function test_gone_rule_has_no_url(): void {

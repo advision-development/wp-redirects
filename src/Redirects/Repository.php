@@ -18,13 +18,14 @@ defined( 'ABSPATH' ) || exit;
 final class Repository {
 
 	private const UPDATABLE = [
-		'type'        => '%s',
-		'source'      => '%s',
-		'target'      => '%s',
-		'status_code' => '%d',
-		'enabled'     => '%d',
-		'origin'      => '%s',
-		'note'        => '%s',
+		'type'           => '%s',
+		'source'         => '%s',
+		'target'         => '%s',
+		'status_code'    => '%d',
+		'enabled'        => '%d',
+		'trailing_slash' => '%d',
+		'origin'         => '%s',
+		'note'           => '%s',
 	];
 
 	private const CREATED_VIA = [ 'manual', 'import', 'slug', 'api' ];
@@ -118,7 +119,7 @@ final class Repository {
 		global $wpdb;
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT id, type, source, target, status_code, position FROM %i WHERE enabled = 1 ORDER BY position ASC, id ASC',
+				'SELECT id, type, source, target, status_code, position, trailing_slash FROM %i WHERE enabled = 1 ORDER BY position ASC, id ASC',
 				Schema::redirects_table()
 			),
 			ARRAY_A
@@ -178,22 +179,23 @@ final class Repository {
 		$ok = $wpdb->insert(
 			Schema::redirects_table(),
 			[
-				'type'        => $type,
-				'source'      => (string) $data['source'],
-				'target'      => isset( $data['target'] ) && '' !== $data['target'] ? (string) $data['target'] : null,
-				'status_code' => (int) $data['status_code'],
-				'position'    => 'regex' === $type ? $this->next_position() : 0,
-				'enabled'     => array_key_exists( 'enabled', $data ) ? ( $data['enabled'] ? 1 : 0 ) : 1,
-				'origin'      => 'auto' === ( $data['origin'] ?? '' ) ? 'auto' : 'manual',
-				'created_by'  => $user,
-				'created_via' => $via,
-				'updated_by'  => null,
-				'note'        => (string) ( $data['note'] ?? '' ),
-				'hits'        => 0,
-				'created_at'  => $now,
-				'updated_at'  => $now,
+				'type'           => $type,
+				'source'         => (string) $data['source'],
+				'target'         => isset( $data['target'] ) && '' !== $data['target'] ? (string) $data['target'] : null,
+				'status_code'    => (int) $data['status_code'],
+				'position'       => 'regex' === $type ? $this->next_position() : 0,
+				'enabled'        => array_key_exists( 'enabled', $data ) ? ( $data['enabled'] ? 1 : 0 ) : 1,
+				'trailing_slash' => empty( $data['trailing_slash'] ) ? 0 : 1,
+				'origin'         => 'auto' === ( $data['origin'] ?? '' ) ? 'auto' : 'manual',
+				'created_by'     => $user,
+				'created_via'    => $via,
+				'updated_by'     => null,
+				'note'           => (string) ( $data['note'] ?? '' ),
+				'hits'           => 0,
+				'created_at'     => $now,
+				'updated_at'     => $now,
 			],
-			[ '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%d', '%s', '%d', '%s', '%d', '%s', '%s' ]
+			[ '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%s', '%d', '%s', '%d', '%s', '%d', '%s', '%s' ]
 		);
 		if ( false === $ok ) {
 			return null;
@@ -234,7 +236,7 @@ final class Repository {
 			$value = $data[ $column ];
 			if ( 'target' === $column ) {
 				$value = null === $value || '' === $value ? null : (string) $value;
-			} elseif ( 'enabled' === $column ) {
+			} elseif ( 'enabled' === $column || 'trailing_slash' === $column ) {
 				$value = $value ? 1 : 0;
 			} elseif ( '%d' === $format ) {
 				$value = (int) $value;

@@ -1,5 +1,7 @@
 <?php
 
+use Advision\Redirects\Import\Importer;
+use Advision\Redirects\Import\YoastSource;
 use Advision\Redirects\Redirects\ChainResolver;
 use Advision\Redirects\Redirects\Repository;
 use Advision\Redirects\Redirects\Validator;
@@ -8,6 +10,7 @@ use Advision\Redirects\Rest\NotFoundController;
 use Advision\Redirects\Rest\RedirectsController;
 use Advision\Redirects\Rest\SettingsController;
 use Advision\Redirects\Rest\TestController;
+use Advision\Redirects\Rest\YoastImportController;
 use Advision\Redirects\Tracking\NotFoundRepository;
 
 /**
@@ -25,6 +28,7 @@ final class RestPermissionsTest extends Adv_Redirects_Rest_TestCase {
 			new TestController( $cache, $chains ),
 			new NotFoundController( new NotFoundRepository() ),
 			new SettingsController(),
+			new YoastImportController( new YoastSource( new Importer( $repo, new Validator( $repo, $chains ) ) ) ),
 		];
 	}
 
@@ -66,6 +70,23 @@ final class RestPermissionsTest extends Adv_Redirects_Rest_TestCase {
 			],
 			'GET /settings'           => [ 'GET', '/settings', null ],
 			'PUT /settings'           => [ 'PUT', '/settings', [ 'log_404' => false ] ],
+			'GET /import/yoast'           => [ 'GET', '/import/yoast', null ],
+			'POST /import/yoast/remove'   => [
+				'POST',
+				'/import/yoast/remove',
+				[
+					'entries' => [
+						[
+							'origin' => 'a',
+							'format' => 'plain',
+							'url'    => 'b',
+							'type'   => 301,
+						],
+					],
+				],
+			],
+			'POST /import/yoast/restore'  => [ 'POST', '/import/yoast/restore', [] ],
+			'DELETE /import/yoast/backup' => [ 'DELETE', '/import/yoast/backup', null ],
 		];
 	}
 

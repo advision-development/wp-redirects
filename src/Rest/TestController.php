@@ -10,6 +10,7 @@ namespace Advision\Redirects\Rest;
 use Advision\Redirects\Matching\Matcher;
 use Advision\Redirects\Matching\PathNormalizer;
 use Advision\Redirects\Matching\RuleCache;
+use Advision\Redirects\Matching\TargetResolver;
 use Advision\Redirects\Redirects\ChainResolver;
 use Advision\Redirects\Settings;
 use Advision\Redirects\Site;
@@ -93,9 +94,23 @@ final class TestController extends BaseController {
 		}
 
 		$forward = (bool) Settings::get( 'forward_query_string' );
-		$url     = Site::resolver()->resolve( $match->target, $match->captures, $normalized['query'], $forward );
+		$url     = Site::resolver()->resolve( $match->target, $match->captures, $normalized['query'], $forward, $match->trailing_slash );
 		if ( null === $url ) {
 			return rest_ensure_response( self::result( $base + [ 'blocked' => true ] ) );
+		}
+
+		// The redirector never redirects a URL to itself, so the live site would not redirect it either.
+		if ( TargetResolver::is_self( $url, Site::home_url(), $normalized['path'], $normalized['query'] ) ) {
+			return rest_ensure_response(
+				self::result(
+					[
+						'reason'  => 'self',
+						'rule_id' => $match->rule_id,
+						'type'    => $match->type,
+						'status'  => $match->status,
+					]
+				)
+			);
 		}
 
 		$key   = $normalized['key'] . ( '' !== $normalized['query'] ? '?' . $normalized['query'] : '' );

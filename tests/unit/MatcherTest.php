@@ -34,13 +34,25 @@ final class MatcherTest extends TestCase {
 				$this->row( 6, 'exact', '/gone', null, 410 ),
 			]
 		);
-		$this->assertSame( [ 'id' => 1, 'target' => '/new', 'status' => 301 ], $rs['exact']['/old'] );
+		$this->assertSame( [ 'id' => 1, 'target' => '/new', 'status' => 301, 'trailing_slash' => false ], $rs['exact']['/old'] );
 		$this->assertArrayHasKey( '/q?x=1', $rs['exact'] );
 		$this->assertArrayNotHasKey( '/off', $rs['exact'] );
 		$this->assertNull( $rs['exact']['/gone']['target'] );
 		$this->assertTrue( $rs['has_query'] );
 		$this->assertSame( [ 4, 3 ], array_column( $rs['regex'], 'id' ) );
 		$this->assertSame( '~^/b/.*$~i', $rs['regex'][0]['pattern'] );
+	}
+
+	public function test_trailing_slash_flag_is_compiled_and_passed_to_the_match(): void {
+		$rows = [
+			[ 'trailing_slash' => '1' ] + $this->row( 1, 'regex', '^/forum/(.*)', '/forum/$1' ),
+			[ 'trailing_slash' => '1' ] + $this->row( 2, 'exact', '/a', '/b' ),
+			$this->row( 3, 'exact', '/c', '/d' ),
+		];
+		$matcher = new Matcher( RulesetCompiler::compile( $rows ) );
+		$this->assertTrue( $matcher->match( $this->req( '/forum/x' ) )->trailing_slash );
+		$this->assertTrue( $matcher->match( $this->req( '/a' ) )->trailing_slash );
+		$this->assertFalse( $matcher->match( $this->req( '/c' ) )->trailing_slash, 'Rows without the column (schema v2 caches) are false.' );
 	}
 
 	public function test_duplicate_exact_keys_lowest_id_wins(): void {

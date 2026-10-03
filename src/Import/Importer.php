@@ -1,7 +1,7 @@
 <?php
 /**
- * Plans, previews and applies a Redirection import. Every rule goes through the
- * Validator, and every write goes through the Repository.
+ * Plans, previews and applies an import from Redirection or Yoast SEO Premium. Every rule goes
+ * through the Validator, and every write goes through the Repository.
  *
  * @package Advision\Redirects
  */
@@ -22,7 +22,11 @@ defined( 'ABSPATH' ) || exit;
 
 final class Importer {
 
-	private const RULE_FIELDS = [ 'type', 'source', 'target', 'status_code', 'enabled', 'note' ];
+	public const SOURCE_REDIRECTION = 'redirection';
+
+	public const SOURCE_YOAST = 'yoast';
+
+	private const RULE_FIELDS = [ 'type', 'source', 'target', 'status_code', 'enabled', 'trailing_slash', 'note' ];
 
 	private Repository $repository;
 
@@ -36,26 +40,27 @@ final class Importer {
 	/**
 	 * Dry run: maps and validates every entry, writes nothing.
 	 *
-	 * @param array $redirects Raw export entries, in import order.
-	 * @param array $groups    Raw export groups.
+	 * @param array  $redirects Raw entries, in import order.
+	 * @param array  $groups    Raw Redirection groups (ignored for Yoast).
+	 * @param string $source    self::SOURCE_REDIRECTION or self::SOURCE_YOAST.
 	 */
-	public function preview( array $redirects, array $groups ): array {
+	public function preview( array $redirects, array $groups = [], string $source = self::SOURCE_REDIRECTION ): array {
 		$this->repository->begin_read_cache();
 		try {
-			return $this->run_preview( $redirects, $groups );
+			return $this->run_preview( $redirects, $groups, $source );
 		} finally {
 			$this->repository->end_read_cache();
 		}
 	}
 
-	private function run_preview( array $redirects, array $groups ): array {
+	private function run_preview( array $redirects, array $groups, string $source ): array {
 		$entries    = [];
 		$pending    = [];
 		$candidates = [];
 		$next_id    = -1;
 		$lookup     = $this->existing_lookup();
 
-		foreach ( $this->plan( $redirects, $groups ) as $index => $item ) {
+		foreach ( $this->plan( $redirects, $groups, $source ) as $index => $item ) {
 			$entry = [
 				'index'     => $index,
 				'source_id' => $item['source_id'],
@@ -76,7 +81,7 @@ final class Importer {
 			if ( $item['superseded'] ) {
 				$entry['status']        = 'superseded';
 				$entry['superseded_by'] = $item['superseded_by'];
-				$entry['error']         = self::superseded_reason( (int) $item['superseded_by'] );
+				$entry['error']         = self::superseded_reason( (int) $item['superseded_by'], $source );
 				$entries[]              = $entry;
 				continue;
 			}
@@ -99,11 +104,12 @@ final class Importer {
 				$entry['status']      = 'overwrite';
 				$entry['existing_id'] = $existing->id;
 				$entry['current']     = [
-					'source'      => $existing->source,
-					'target'      => $existing->target,
-					'status_code' => $existing->status_code,
-					'enabled'     => $existing->enabled,
-					'note'        => $existing->note,
+					'source'         => $existing->source,
+					'target'         => $existing->target,
+					'status_code'    => $existing->status_code,
+					'enabled'        => $existing->enabled,
+					'trailing_slash' => $existing->trailing_slash,
+					'note'           => $existing->note,
 				];
 			}
 
@@ -111,13 +117,14 @@ final class Importer {
 			// it). A new rule that is disabled can never matter, so it is left out.
 			if ( null !== $existing || $result['data']['enabled'] ) {
 				$row       = [
-					'id'          => null !== $existing ? $existing->id : $next_id--,
-					'type'        => $result['data']['type'],
-					'source'      => $result['data']['source'],
-					'target'      => $result['data']['target'],
-					'status_code' => $result['data']['status_code'],
-					'enabled'     => $result['data']['enabled'] ? 1 : 0,
-					'position'    => null !== $existing && 'regex' === $existing->type ? $existing->position : 1000000 + $index,
+					'id'             => null !== $existing ? $existing->id : $next_id--,
+					'type'           => $result['data']['type'],
+					'source'         => $result['data']['source'],
+					'target'         => $result['data']['target'],
+					'status_code'    => $result['data']['status_code'],
+					'enabled'        => $result['data']['enabled'] ? 1 : 0,
+					'trailing_slash' => $result['data']['trailing_slash'] ? 1 : 0,
+					'position'       => null !== $existing && 'regex' === $existing->type ? $existing->position : 1000000 + $index,
 				];
 				$pending[] = $row;
 
@@ -127,7 +134,7 @@ final class Importer {
 						'entry'  => count( $entries ),
 						'type'   => $result['data']['type'],
 						'source' => $result['data']['source'],
-						'target' => (string) $result['data']['target'],
+						'target' => TargetResolver::trailing_slash( (string) $result['data']['target'], (string) $result['data']['target'], $result['data']['trailing_slash'] ),
 					];
 				}
 			}
@@ -200,13 +207,14 @@ final class Importer {
 	/**
 	 * Applies one batch. The caller sends batches in file order.
 	 *
-	 * @param array $redirects Raw export entries for this batch.
-	 * @param array $groups    Raw export groups.
+	 * @param array  $redirects Raw entries for this batch.
+	 * @param array  $groups    Raw Redirection groups (ignored for Yoast).
+	 * @param string $source    self::SOURCE_REDIRECTION or self::SOURCE_YOAST.
 	 */
-	public function import( array $redirects, array $groups ): array {
+	public function import( array $redirects, array $groups = [], string $source = self::SOURCE_REDIRECTION ): array {
 		$entries = [];
 
-		foreach ( $this->plan( $redirects, $groups ) as $index => $item ) {
+		foreach ( $this->plan( $redirects, $groups, $source ) as $index => $item ) {
 			$entry = [
 				'index'     => $index,
 				'source_id' => $item['source_id'],
@@ -219,7 +227,7 @@ final class Importer {
 				continue;
 			}
 			if ( $item['superseded'] ) {
-				$entry['error']         = self::superseded_reason( (int) $item['superseded_by'] );
+				$entry['error']         = self::superseded_reason( (int) $item['superseded_by'], $source );
 				$entry['superseded_by'] = $item['superseded_by'];
 				$entries[]              = $entry;
 				continue;
@@ -276,28 +284,53 @@ final class Importer {
 	}
 
 	/**
-	 * Maps entries, applies the filter and marks in-file duplicates.
+	 * Whether WP Redirects holds a rule with the same conflict key as each mapped rule, the same
+	 * match the import uses to decide new or overwrite. Used before removing redirects from Yoast.
 	 *
-	 * Redirection serves the first enabled match in position order, so among entries with the same
-	 * conflict key (in the order received, which the client sorts by position) the winner is the
-	 * first one that maps and passes the filter and is enabled; if none is enabled, the first one
-	 * that maps. Every other entry with that key is superseded by the winner.
+	 * @param array<int|string,array> $rules Mapped rules (`type`, `source`).
+	 * @return array<int|string,bool> Same keys as $rules.
+	 */
+	public function covered( array $rules ): array {
+		$lookup = $this->existing_lookup();
+		$out    = [];
+		foreach ( $rules as $key => $rule ) {
+			$out[ $key ] = null !== $this->existing_for( $rule, $lookup );
+		}
+		return $out;
+	}
+
+	/**
+	 * Maps entries (through RedirectionMapper or YoastMapper), applies the filter and marks in-file
+	 * duplicates, the same way for both sources.
+	 *
+	 * Entries arrive in the order the source served them: Redirection's position order (the client
+	 * sorts by position) or Yoast's stored order. Among entries with the same conflict key, the winner
+	 * is the first one that maps and passes the filter and is enabled; if none is enabled, the first
+	 * one that maps. Every other entry with that key is superseded by the winner.
+	 *
+	 * - Redirection serves the first enabled match, so that is the entry its site actually used.
+	 * - Every Yoast rule is enabled, so the first mapped entry wins. Yoast keeps one entry per origin,
+	 *   so its duplicates are origins that differ only in case or percent-encoding, which WP Redirects
+	 *   treats as one source.
 	 *
 	 * The winner is chosen before validation. If it later fails validation it is reported as
-	 * skipped and no superseded copy is imported in its place: those copies were never served by
-	 * Redirection, so importing one would add a redirect the site never had.
+	 * skipped and no superseded copy is imported in its place: the source never served those copies
+	 * for that key, so importing one would add a redirect the site never had.
 	 *
 	 * @return array<int,array{source_id:int,source:string,rule:?array,notes:array,error:?string,superseded:bool,superseded_by:?int}>
 	 */
-	private function plan( array $redirects, array $groups ): array {
-		$info    = RedirectionMapper::group_info( $groups );
-		$planned = [];
+	private function plan( array $redirects, array $groups, string $source ): array {
+		$yoast    = self::SOURCE_YOAST === $source;
+		$info     = $yoast ? [] : RedirectionMapper::group_info( $groups );
+		$trailing = $yoast && Site::trailing_slash_permalinks();
+		$planned  = [];
 
 		foreach ( array_values( $redirects ) as $index => $raw ) {
-			$mapped = RedirectionMapper::map( $raw, $info );
+			$mapped = $yoast ? YoastMapper::map( $raw, $trailing ) : RedirectionMapper::map( $raw, $info );
+			$key    = $yoast ? 'origin' : 'url';
 			$item   = [
 				'source_id'     => $mapped['source_id'],
-				'source'        => is_array( $raw ) && isset( $raw['url'] ) && is_string( $raw['url'] ) ? $raw['url'] : '',
+				'source'        => is_array( $raw ) && isset( $raw[ $key ] ) && is_string( $raw[ $key ] ) ? $raw[ $key ] : '',
 				'rule'          => $mapped['rule'],
 				'notes'         => $mapped['notes'],
 				'error'         => $mapped['error'],
@@ -309,10 +342,11 @@ final class Importer {
 				/**
 				 * Filters a mapped import rule. Return false (or any non-array) to skip it.
 				 *
-				 * @param array|false $rule  { type, source, target, status_code, enabled, note, origin }.
-				 * @param array       $entry The raw Redirection export entry.
+				 * @param array|false $rule   { type, source, target, status_code, enabled, trailing_slash, note, origin }.
+				 * @param array       $entry  The raw entry (Redirection export entry or Yoast base-option entry).
+				 * @param string      $source 'redirection' or 'yoast'.
 				 */
-				$filtered = apply_filters( 'adv_redirects_import_rule', $mapped['rule'], is_array( $raw ) ? $raw : [] );
+				$filtered = apply_filters( 'adv_redirects_import_rule', $mapped['rule'], is_array( $raw ) ? $raw : [], $source );
 				if ( ! is_array( $filtered ) ) {
 					$item['rule']  = null;
 					$item['error'] = 'filtered';
@@ -427,8 +461,8 @@ final class Importer {
 		if ( null !== $rule['target'] && ! is_string( $rule['target'] ) ) {
 			return false;
 		}
-		foreach ( [ 'type', 'status_code', 'enabled', 'note', 'origin' ] as $field ) {
-			if ( null !== $rule[ $field ] && ! is_scalar( $rule[ $field ] ) ) {
+		foreach ( [ 'type', 'status_code', 'enabled', 'trailing_slash', 'note', 'origin' ] as $field ) {
+			if ( isset( $rule[ $field ] ) && ! is_scalar( $rule[ $field ] ) ) {
 				return false;
 			}
 		}
@@ -450,14 +484,21 @@ final class Importer {
 	/**
 	 * @return array{code:string,message:string}
 	 */
-	private static function superseded_reason( int $winner_id ): array {
-		return [
-			'code'    => 'superseded',
-			'message' => sprintf(
+	private static function superseded_reason( int $winner_id, string $source ): array {
+		$message = self::SOURCE_YOAST === $source
+			? sprintf(
+				/* translators: %d: Yoast redirect number */
+				__( 'Yoast entry #%d already covers this source.', 'wp-redirects' ),
+				$winner_id
+			)
+			: sprintf(
 				/* translators: %d: Redirection entry id */
 				__( 'Redirection used entry #%d for this source; this copy was never served.', 'wp-redirects' ),
 				$winner_id
-			),
+			);
+		return [
+			'code'    => 'superseded',
+			'message' => $message,
 		];
 	}
 
@@ -471,6 +512,9 @@ final class Importer {
 			'unsupported_action'     => __( 'Only redirects and 410 Gone responses can be imported.', 'wp-redirects' ),
 			'unsupported_status'     => __( 'This status code is not supported.', 'wp-redirects' ),
 			'filtered'               => __( 'Skipped by the adv_redirects_import_rule filter.', 'wp-redirects' ),
+			'unsupported_capture'    => __( 'Only captures $1 to $9 are supported.', 'wp-redirects' ),
+			'unreachable_regex'      => __( 'Yoast matched regex rules against the path, so a pattern that starts with a URL never matched anything.', 'wp-redirects' ),
+			'case_dependent_regex'   => __( 'Yoast matched this pattern case-sensitively; WP Redirects ignores case, so importing it could redirect other URLs. It stays in Yoast.', 'wp-redirects' ),
 		];
 		return [
 			'code'    => $code,

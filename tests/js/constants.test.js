@@ -47,18 +47,51 @@ describe( 'constants', () => {
 		);
 	} );
 	it( 'strips read-only fields from payloads', () => {
-		expect(
-			ruleToPayload( {
-				id: 1,
-				type: 'exact',
-				source: '/a',
-				target: '/b',
-				status_code: 301,
-				enabled: true,
-				note: '',
-				hits: 4,
-			} )
-		).toEqual( {
+		const payload = ruleToPayload( {
+			id: 1,
+			type: 'exact',
+			source: '/a',
+			target: '/b',
+			status_code: 301,
+			enabled: true,
+			trailing_slash: false,
+			note: '',
+			hits: 4,
+		} );
+		expect( payload ).toStrictEqual( {
+			type: 'exact',
+			source: '/a',
+			target: '/b',
+			status_code: 301,
+			enabled: true,
+			trailing_slash: false,
+			note: '',
+		} );
+	} );
+	it( 'keeps the trailing-slash flag, so Undo re-creates the rule as it was', () => {
+		const payload = ruleToPayload( {
+			id: 7,
+			type: 'regex',
+			source: '^/forum/(.*)',
+			target: '/forum/$1',
+			status_code: 301,
+			enabled: true,
+			trailing_slash: true,
+			note: '',
+		} );
+		expect( payload.trailing_slash ).toBe( true );
+		expect( JSON.parse( JSON.stringify( payload ) ) ).toStrictEqual( {
+			type: 'regex',
+			source: '^/forum/(.*)',
+			target: '/forum/$1',
+			status_code: 301,
+			enabled: true,
+			trailing_slash: true,
+			note: '',
+		} );
+	} );
+	it( 'drops an undefined trailing-slash flag from the JSON body', () => {
+		const payload = ruleToPayload( {
 			type: 'exact',
 			source: '/a',
 			target: '/b',
@@ -66,5 +99,8 @@ describe( 'constants', () => {
 			enabled: true,
 			note: '',
 		} );
+		expect(
+			Object.keys( JSON.parse( JSON.stringify( payload ) ) )
+		).not.toContain( 'trailing_slash' );
 	} );
 } );

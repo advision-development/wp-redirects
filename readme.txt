@@ -21,11 +21,17 @@ Exact and regex redirects with selectable status codes, object-cached matching, 
 * Test-a-URL tool
 * 404 log with one-click "create redirect"
 * Import redirects from a Redirection plugin JSON export, with a dry-run preview (new, overwrite, skipped) and batched import
-* Imports take up to 2,000 redirects per file; very large files may need splitting, depending on your server's upload limits
+* Import redirects from Yoast SEO Premium, then remove them from Yoast with a backup you can restore
+* Imports take up to 5,000 redirects per file; very large files may need splitting, depending on your server's upload limits
 * Shows who created each redirect (and how: manually, imported, slug change or API) and who last edited it
 * Actions and filters for developers (see docs/hooks.md)
 
 == Changelog ==
+
+= Unreleased =
+* Import from Yoast SEO Premium.
+* Never redirects a URL to itself. A rule whose target resolves to the requested URL (for example a regex `^/forum/(.*)` to `/forum/$1`) is skipped for that request, so case-only and trailing-slash-only redirects are now allowed and end at their target. Chain checks and the Test URL tool follow the same rule.
+* Redirects can add a trailing slash to their target after captures are filled in (database schema v3). The Yoast import uses this so capture targets such as `forum/$1` keep Yoast's trailing slash, and the rules table labels these redirects.
 
 = 1.0.0 =
 * Initial release.

@@ -1,6 +1,6 @@
 <?php
 /**
- * REST endpoints for importing Redirection exports.
+ * REST endpoints for importing Redirection exports and Yoast SEO Premium redirects.
  *
  * @package Advision\Redirects
  */
@@ -13,7 +13,7 @@ defined( 'ABSPATH' ) || exit;
 
 final class ImportController extends BaseController {
 
-	public const MAX_PREVIEW = 2000;
+	public const MAX_PREVIEW = 5000;
 
 	public const MAX_BATCH = 50;
 
@@ -51,22 +51,26 @@ final class ImportController extends BaseController {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function preview( \WP_REST_Request $request ) {
-		$unknown = $this->reject_unknown( $request, [ 'source', 'version', 'groups', 'redirects' ] );
+		$source  = (string) $request['source'];
+		$allowed = Importer::SOURCE_YOAST === $source ? [ 'source', 'redirects' ] : [ 'source', 'version', 'groups', 'redirects' ];
+		$unknown = $this->reject_unknown( $request, $allowed );
 		if ( null !== $unknown ) {
 			return $unknown;
 		}
-		return rest_ensure_response( $this->importer->preview( (array) $request['redirects'], (array) $request['groups'] ) );
+		return rest_ensure_response( $this->importer->preview( (array) $request['redirects'], (array) $request['groups'], $source ) );
 	}
 
 	/**
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function import( \WP_REST_Request $request ) {
-		$unknown = $this->reject_unknown( $request, [ 'source', 'groups', 'redirects' ] );
+		$source  = (string) $request['source'];
+		$allowed = Importer::SOURCE_YOAST === $source ? [ 'source', 'redirects' ] : [ 'source', 'groups', 'redirects' ];
+		$unknown = $this->reject_unknown( $request, $allowed );
 		if ( null !== $unknown ) {
 			return $unknown;
 		}
-		return rest_ensure_response( $this->importer->import( (array) $request['redirects'], (array) $request['groups'] ) );
+		return rest_ensure_response( $this->importer->import( (array) $request['redirects'], (array) $request['groups'], $source ) );
 	}
 
 	private function args( int $max, bool $with_version ): array {
@@ -74,7 +78,7 @@ final class ImportController extends BaseController {
 			'source'    => self::arg(
 				[
 					'type'     => 'string',
-					'enum'     => [ 'redirection' ],
+					'enum'     => [ Importer::SOURCE_REDIRECTION, Importer::SOURCE_YOAST ],
 					'required' => true,
 				]
 			),

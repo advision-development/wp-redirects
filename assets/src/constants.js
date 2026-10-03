@@ -81,5 +81,7 @@ export const ruleToPayload = ( rule ) => ( {
 	target: rule.target,
 	status_code: rule.status_code,
 	enabled: rule.enabled,
+	// Undefined (an older rule shape) is dropped from the JSON body, so the server default applies.
+	trailing_slash: rule.trailing_slash,
 	note: rule.note,
 } );

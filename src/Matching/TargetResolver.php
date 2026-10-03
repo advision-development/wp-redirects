@@ -29,8 +29,11 @@ final class TargetResolver {
 		$this->allowed_hosts = array_map( 'strtolower', $allowed_hosts );
 	}
 
-	public function resolve( string $template, array $captures, string $request_query, bool $forward_query ): ?string {
-		$url = self::substitute( $template, $captures, true );
+	/**
+	 * @param bool $trailing_slash The rule's trailing-slash flag, applied after capture substitution.
+	 */
+	public function resolve( string $template, array $captures, string $request_query, bool $forward_query, bool $trailing_slash = false ): ?string {
+		$url = self::trailing_slash( $template, self::substitute( $template, $captures, true ), $trailing_slash );
 
 		if ( ! UrlSafety::is_safe( $url ) ) {
 			return null;
@@ -70,6 +73,63 @@ final class TargetResolver {
 			return $site_host;
 		}
 		return UrlSafety::host_of( (string) preg_replace( '/\$[1-9]/', '', $template ), $site_host );
+	}
+
+	/**
+	 * Whether $url is the request itself, so redirecting to it would send the visitor back to the
+	 * same URL (Yoast SEO Premium has the same guard).
+	 *
+	 * One representation on both sides: $base, then the percent-decoded path, then "?" and the raw
+	 * query when it is non-empty. The request side is already in that form (PathNormalizer decodes
+	 * the path and keeps the query raw), so only the path of $url is decoded here. That makes a capture
+	 * re-encoded by substitute() ("caf%C3%A9") equal the decoded request path it came from ("café").
+	 *
+	 * The comparison is byte for byte: a path that differs only in case ("/NFL" vs "/nfl") or in a
+	 * trailing slash ("/foo" vs "/foo/") is a different URL, so case-fix and slash-fix redirects still
+	 * fire. A fragment is part of the compared path, so "/foo#top" is not "/foo".
+	 *
+	 * @param string $url   Final URL: absolute, or a path when $base is ''.
+	 * @param string $base  Site home URL without trailing slash, or '' to compare paths.
+	 * @param string $path  Decoded request path relative to the home, starting with "/".
+	 * @param string $query Raw request query string without "?".
+	 */
+	public static function is_self( string $url, string $base, string $path, string $query ): bool {
+		$base = rtrim( $base, '/' );
+		$len  = strlen( $base );
+		if ( substr( $url, 0, $len ) !== $base || '/' !== substr( $url, $len, 1 ) ) {
+			return false;
+		}
+		$rest = (string) substr( $url, $len );
+		if ( '' === $base && 0 === strpos( $rest, '//' ) ) {
+			return false;
+		}
+		$qpos      = strpos( $rest, '?' );
+		$url_path  = false === $qpos ? $rest : substr( $rest, 0, $qpos );
+		$url_query = false === $qpos ? '' : substr( $rest, $qpos + 1 );
+		return rawurldecode( $url_path ) === $path && $url_query === $query;
+	}
+
+	/**
+	 * Adds the trailing slash a rule's flag asks for to its substituted target, the way Yoast SEO
+	 * Premium does after capture substitution. Only when the flag is set, the template is relative
+	 * (a single leading "/") with no literal "?" or "#", the resolved path has no "." (Yoast's
+	 * has_extension()) and it does not already end in "/". Otherwise $url is returned unchanged.
+	 *
+	 * @param string $template The rule's target as stored.
+	 * @param string $url      The target after capture substitution.
+	 * @param bool   $flag     The rule's trailing_slash flag.
+	 */
+	public static function trailing_slash( string $template, string $url, bool $flag ): string {
+		if ( ! $flag || '' === $template || '/' !== $template[0] || 0 === strpos( $template, '//' ) ) {
+			return $url;
+		}
+		if ( false !== strpbrk( $template, '?#' ) || false !== strpbrk( $url, '?#' ) ) {
+			return $url;
+		}
+		if ( false !== strpos( $url, '.' ) || '/' === substr( $url, -1 ) ) {
+			return $url;
+		}
+		return $url . '/';
 	}
 
 	public static function substitute( string $template, array $captures, bool $encode ): string {

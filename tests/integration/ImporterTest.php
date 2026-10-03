@@ -41,7 +41,7 @@ final class ImporterTest extends WP_UnitTestCase {
 	public function test_preview_counts_and_writes_nothing(): void {
 		$preview = $this->importer->preview( $this->export['redirects'], $this->export['groups'] );
 		$this->assertSame(
-			[ 'total' => 21, 'new' => 13, 'overwrite' => 0, 'superseded' => 1, 'skipped' => 7, 'warnings' => 1 ],
+			[ 'total' => 21, 'new' => 14, 'overwrite' => 0, 'superseded' => 1, 'skipped' => 6, 'warnings' => 1 ],
 			$preview['counts']
 		);
 		$this->assertSame( [], $this->repo->all() );
@@ -58,7 +58,7 @@ final class ImporterTest extends WP_UnitTestCase {
 		$this->assertSame( 'superseded', $superseded['error']['code'] );
 		$this->assertStringContainsString( '#9', $superseded['error']['message'] );
 
-		$this->assertSame( 'adv_redirects_loop', $this->by_source_id( $entries, 8 )['error']['code'] );
+		$this->assertSame( 'new', $this->by_source_id( $entries, 8 )['status'], '/fx-loop/again/ resolves to itself, so the walk ends there instead of looping.' );
 		$this->assertSame( 'adv_redirects_loop', $this->by_source_id( $entries, 19 )['error']['code'], 'Loop formed only by imported rules.' );
 		$this->assertSame( 'adv_redirects_reserved_source', $this->by_source_id( $entries, 21 )['error']['code'] );
 		$this->assertSame( 'unsupported_status', $this->by_source_id( $entries, 12 )['error']['code'] );
@@ -79,8 +79,8 @@ final class ImporterTest extends WP_UnitTestCase {
 		foreach ( array_chunk( $this->importable( $preview ), 5 ) as $batch ) {
 			$created += $this->importer->import( $batch, $this->export['groups'] )['counts']['created'];
 		}
-		$this->assertSame( 13, $created );
-		$this->assertCount( 13, $this->repo->all() );
+		$this->assertSame( 14, $created );
+		$this->assertCount( 14, $this->repo->all() );
 
 		$auto = $this->repo->exact_rule_by_key( PathNormalizer::source_key( '/fx-auto-slug/' ) );
 		$this->assertSame( 'auto', $auto->origin );
@@ -90,7 +90,7 @@ final class ImporterTest extends WP_UnitTestCase {
 
 	public function test_import_of_the_full_list_skips_like_preview(): void {
 		$result = $this->importer->import( $this->export['redirects'], $this->export['groups'] );
-		$this->assertSame( [ 'total' => 21, 'created' => 13, 'updated' => 0, 'skipped' => 8 ], $result['counts'] );
+		$this->assertSame( [ 'total' => 21, 'created' => 14, 'updated' => 0, 'skipped' => 7 ], $result['counts'] );
 	}
 
 	public function test_reimport_is_idempotent(): void {
@@ -98,12 +98,12 @@ final class ImporterTest extends WP_UnitTestCase {
 		$this->importer->import( $this->importable( $preview ), $this->export['groups'] );
 
 		$again = $this->importer->preview( $this->export['redirects'], $this->export['groups'] );
-		$this->assertSame( 13, $again['counts']['overwrite'] );
+		$this->assertSame( 14, $again['counts']['overwrite'] );
 		$this->assertSame( 0, $again['counts']['new'] );
 
 		$result = $this->importer->import( $this->importable( $again ), $this->export['groups'] );
-		$this->assertSame( [ 'total' => 13, 'created' => 0, 'updated' => 13, 'skipped' => 0 ], $result['counts'] );
-		$this->assertCount( 13, $this->repo->all() );
+		$this->assertSame( [ 'total' => 14, 'created' => 0, 'updated' => 14, 'skipped' => 0 ], $result['counts'] );
+		$this->assertCount( 14, $this->repo->all() );
 	}
 
 	public function test_overwrite_keeps_id_and_hits_and_uses_imported_target_for_chains(): void {

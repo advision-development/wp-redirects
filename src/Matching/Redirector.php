@@ -55,7 +55,7 @@ final class Redirector {
 		/**
 		 * Fires immediately before a redirect response is sent.
 		 *
-		 * @param array  $rule   { id, type, target, status }.
+		 * @param array  $rule   { id, type, target, status, trailing_slash }.
 		 * @param string $url    Final absolute URL.
 		 * @param int    $status HTTP status code.
 		 */
@@ -95,6 +95,9 @@ final class Redirector {
 		if ( Site::is_unhandled_request( $request ) ) {
 			return null;
 		}
+
+		// The URL actually requested, before any path filter: a target equal to it is not redirected.
+		$requested = $request;
 
 		/**
 		 * Filters whether this request should be matched at all.
@@ -146,10 +149,11 @@ final class Redirector {
 		}
 
 		$rule = [
-			'id'     => $match->rule_id,
-			'type'   => $match->type,
-			'target' => $match->target,
-			'status' => $match->status,
+			'id'             => $match->rule_id,
+			'type'           => $match->type,
+			'target'         => $match->target,
+			'status'         => $match->status,
+			'trailing_slash' => $match->trailing_slash,
 		];
 
 		/**
@@ -181,7 +185,7 @@ final class Redirector {
 		 */
 		$forward = (bool) apply_filters( 'adv_redirects_forward_query_string', (bool) Settings::get( 'forward_query_string' ), $rule );
 
-		$url = Site::resolver()->resolve( $match->target, $match->captures, $request['query'], $forward );
+		$url = Site::resolver()->resolve( $match->target, $match->captures, $request['query'], $forward, $match->trailing_slash );
 		if ( null === $url ) {
 			return null;
 		}
@@ -195,6 +199,12 @@ final class Redirector {
 		 */
 		$url = apply_filters( 'adv_redirects_target_url', $url, $rule, $request['path'] );
 		if ( ! is_string( $url ) || ! UrlSafety::is_safe( $url ) ) {
+			return null;
+		}
+
+		// Never redirect to the requested URL itself (it would repeat forever). Compared byte for byte
+		// as home URL + decoded path + raw query, so case-only and slash-only redirects still fire.
+		if ( TargetResolver::is_self( $url, Site::home_url(), $requested['path'], $requested['query'] ) ) {
 			return null;
 		}
 
