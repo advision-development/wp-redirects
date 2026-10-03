@@ -208,3 +208,12 @@ Keep the existing e2e accessible names ("Source", "Target", "Test a URL", "Add r
   3. Run detect, then a timed preview against the 20 s gate, then import.
   4. Remove from Yoast through the real manager, then curl-check a sample of plain, regex and 410 URLs on :8080 to confirm WP Redirects now serves them with the same status and target.
   5. Restore, then restore the database dump.
+
+## 11. Amendments (2026-10-03, final review)
+
+1. **Query regexes stay in Yoast (C1).** A regex with a literal `\?` (note `regex_query`) is still imported, but it is never removed from Yoast: Yoast matched it against `/path?query` and WP Redirects matches the path only. `YoastSource::remove()` reports it `not_covered`, and the client leaves it out of the removal candidates. With the fixture, 16 entries are removed (not 17) and Yoast keeps 10.
+2. **Self-redirect guard (C2).** WP Redirects never redirects a URL to itself, like Yoast's handler (main spec §16.12). Yoast regexes such as `/forum/(.*)` → `forum/$1` therefore import safely, and a chain that ends in such a rule (`/props` → `/odds/`) is no longer reported as a loop.
+3. **Removal only when unchanged (I1).** `POST /import/yoast/remove` items are `{ origin, format, url, type }` (`url` a string, at most 2,048 characters, may be empty; `type` an integer; no other properties). An item is removed only if Yoast still holds an entry with the identical origin, format, url and `(int)` type, in both the option store and the manager store (`get_target()`, `get_type()`). An entry edited in Yoast since the import is `not_found` and stays.
+4. **Case-dependent regexes stay in Yoast (I2).** New skip reason `case_dependent_regex`: a regex origin with a literal capital A–Z outside escape sequences, character classes and `{…}` braces. Yoast matched it case-sensitively and WP Redirects would not, so it could redirect other URLs. Message: "Yoast matched this pattern case-sensitively; WP Redirects ignores case, so importing it could redirect other URLs. It stays in Yoast."
+5. **Leading capture that starts with `/` (I3).** A target that starts with `$n` (optionally after `/`) whose capturing group in the origin starts with `/` or `\/` is skipped as `unsupported_capture`, since `/$1/x` would become the protocol-relative `//nfl/x`.
+6. Minor: the trailing-slash rule matches Yoast's `has_extension()` (a `.` in any path segment means no slash); a target with any URI scheme is kept unchanged (the Validator rejects non-http(s) ones); plain export keys are the trimmed origin.
