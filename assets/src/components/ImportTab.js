@@ -301,7 +301,12 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 			<YoastNotices
 				status={ yoast }
 				busy={ busy }
-				flowActive={ yoastFlow && phase !== 'idle' }
+				previewing={ yoastFlow && phase === 'previewing' }
+				previewError={ yoastFlow ? requestError : '' }
+				flowActive={
+					yoastFlow &&
+					! [ 'idle', 'previewing', 'checked' ].includes( phase )
+				}
 				onPreview={ startYoast }
 				onChanged={ loadYoast }
 			/>
@@ -419,7 +424,7 @@ export default function ImportTab( { onImported, onViewRedirects } ) {
 					</dl>
 				) }
 
-				{ requestError && (
+				{ requestError && ! yoastFlow && (
 					<Notice status="error" isDismissible={ false }>
 						{ requestError }
 					</Notice>

@@ -1,5 +1,5 @@
 import { Button, Notice } from '@wordpress/components';
-import { useRef, useState } from '@wordpress/element';
+import { useEffect, useRef, useState } from '@wordpress/element';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { api } from '../api';
 import { errorMessage } from '../constants';
@@ -15,6 +15,8 @@ import ConfirmModal from './ConfirmModal';
 export default function YoastNotices( {
 	status,
 	busy,
+	previewing,
+	previewError,
 	flowActive,
 	onPreview,
 	onChanged,
@@ -25,6 +27,22 @@ export default function YoastNotices( {
 	const [ message, setMessage ] = useState( '' );
 	const [ error, setError ] = useState( '' );
 	const messageRef = useRef();
+	const errorRef = useRef();
+	const previewErrorRef = useRef();
+
+	// A failed preview shows its error in the notice; move focus there.
+	useEffect( () => {
+		if ( previewError ) {
+			previewErrorRef.current?.focus();
+		}
+	}, [ previewError ] );
+
+	// A failed restore or delete shows its error; move focus there.
+	useEffect( () => {
+		if ( error ) {
+			errorRef.current?.focus();
+		}
+	}, [ error ] );
 
 	if ( ! status ) {
 		return null;
@@ -39,6 +57,7 @@ export default function YoastNotices( {
 		setWorking( true );
 		setError( '' );
 		setMessage( '' );
+		let failed = false;
 		try {
 			if ( action === 'restore' ) {
 				const result = await api.yoastRestore();
@@ -59,71 +78,90 @@ export default function YoastNotices( {
 			}
 			await onChanged();
 		} catch ( requestError ) {
+			failed = true;
 			setError( errorMessage( requestError ) );
 		} finally {
 			setWorking( false );
 			// The notice that held the focused button may be gone; keep focus in the flow.
-			messageRef.current?.focus();
+			// On failure the error effect above moves focus to the error instead.
+			if ( ! failed ) {
+				messageRef.current?.focus();
+			}
 		}
 	};
 
 	return (
 		<div className="adv-redirects-yoast">
 			{ status.detected && ! hidden && ! flowActive && (
-				<Notice status="info" isDismissible={ false }>
-					<p>
-						{ sprintf(
-							/* translators: 1: plain redirects, 2: regex redirects */
-							__(
-								'Yoast SEO Premium redirects found: %1$d plain, %2$d regex.',
-								'wp-redirects'
-							),
-							status.counts.plain,
-							status.counts.regex
-						) }
-					</p>
-					{ status.premium_active && (
-						<p>
-							{ __(
-								'Yoast serves these first until you remove them from Yoast after importing.',
-								'wp-redirects'
-							) }
-						</p>
-					) }
-					{ warning && <p>{ warning }</p> }
-					{ total > MAX_PREVIEW && (
+				<>
+					<Notice status="info" isDismissible={ false }>
 						<p>
 							{ sprintf(
-								/* translators: 1: number of Yoast redirects, 2: maximum per import */
+								/* translators: 1: plain redirects, 2: regex redirects */
 								__(
-									'Yoast has %1$d redirects; the maximum per import is %2$d.',
+									'Yoast SEO Premium redirects found: %1$d plain, %2$d regex.',
 									'wp-redirects'
 								),
-								total,
-								MAX_PREVIEW
+								status.counts.plain,
+								status.counts.regex
 							) }
 						</p>
+						{ status.premium_active && (
+							<p>
+								{ __(
+									'Yoast serves these first until you remove them from Yoast after importing.',
+									'wp-redirects'
+								) }
+							</p>
+						) }
+						{ warning && <p>{ warning }</p> }
+						{ total > MAX_PREVIEW && (
+							<p>
+								{ sprintf(
+									/* translators: 1: number of Yoast redirects, 2: maximum per import */
+									__(
+										'Yoast has %1$d redirects; the maximum per import is %2$d.',
+										'wp-redirects'
+									),
+									total,
+									MAX_PREVIEW
+								) }
+							</p>
+						) }
+						<div className="adv-redirects-import__actions">
+							<Button
+								variant="primary"
+								isBusy={ previewing }
+								disabled={ total > MAX_PREVIEW }
+								aria-disabled={ busy || undefined }
+								onClick={ () => {
+									if ( ! busy ) {
+										onPreview();
+									}
+								} }
+								__next40pxDefaultSize
+							>
+								{ __( 'Preview Yoast import', 'wp-redirects' ) }
+							</Button>
+							<Button
+								variant="tertiary"
+								onClick={ () => {
+									hideNotice();
+									setHidden( true );
+								} }
+							>
+								{ __( 'Not now', 'wp-redirects' ) }
+							</Button>
+						</div>
+					</Notice>
+					{ previewError && (
+						<div ref={ previewErrorRef } tabIndex={ -1 }>
+							<Notice status="error" isDismissible={ false }>
+								{ previewError }
+							</Notice>
+						</div>
 					) }
-					<div className="adv-redirects-import__actions">
-						<Button
-							variant="primary"
-							disabled={ busy || total > MAX_PREVIEW }
-							onClick={ onPreview }
-							__next40pxDefaultSize
-						>
-							{ __( 'Preview Yoast import', 'wp-redirects' ) }
-						</Button>
-						<Button
-							variant="tertiary"
-							onClick={ () => {
-								hideNotice();
-								setHidden( true );
-							} }
-						>
-							{ __( 'Not now', 'wp-redirects' ) }
-						</Button>
-					</div>
-				</Notice>
+				</>
 			) }
 
 			{ status.backup && (
@@ -162,9 +200,11 @@ export default function YoastNotices( {
 			) }
 
 			{ error && (
-				<Notice status="error" isDismissible={ false }>
-					{ error }
-				</Notice>
+				<div ref={ errorRef } tabIndex={ -1 }>
+					<Notice status="error" isDismissible={ false }>
+						{ error }
+					</Notice>
+				</div>
 			) }
 			{ /* Always mounted so results are announced. */ }
 			<p

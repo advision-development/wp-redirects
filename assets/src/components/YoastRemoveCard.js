@@ -17,10 +17,14 @@ export default function YoastRemoveCard( { candidates, status, onDone } ) {
 	} );
 	const [ error, setError ] = useState( '' );
 	const resultRef = useRef();
+	const progressRef = useRef();
 
 	useEffect( () => {
 		if ( [ 'removed', 'kept', 'failed' ].includes( state ) ) {
 			resultRef.current?.focus();
+		} else if ( state === 'removing' ) {
+			// The Remove button just unmounted; keep focus on the progress text.
+			progressRef.current?.focus();
 		}
 	}, [ state ] );
 
@@ -133,7 +137,7 @@ export default function YoastRemoveCard( { candidates, status, onDone } ) {
 			</div>
 
 			{ /* Always mounted so the first update is announced. */ }
-			<p aria-live="polite">
+			<p ref={ progressRef } tabIndex={ -1 } aria-live="polite">
 				{ state === 'removing' && (
 					<>
 						{ sprintf(
