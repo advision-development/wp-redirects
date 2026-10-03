@@ -30,6 +30,7 @@ Exact and regex redirects with selectable status codes, object-cached matching, 
 
 = Unreleased =
 * Import from Yoast SEO Premium.
+* Never redirects a URL to itself. A rule whose target resolves to the requested URL (for example a regex `^/forum/(.*)` to `/forum/$1`) is skipped for that request, so case-only and trailing-slash-only redirects are now allowed and end at their target. Chain checks and the Test URL tool follow the same rule.
 
 = 1.0.0 =
 * Initial release.

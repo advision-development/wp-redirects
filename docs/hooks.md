@@ -13,7 +13,7 @@ All hooks use the `adv_redirects_` prefix. Rule arrays passed to request-time ho
 | `adv_redirects_match` | `?MatchResult $match, string $path, string $query` | n/a | Override or suppress (return `null`) the match. |
 | `adv_redirects_status_code` | `int $code, array $rule` | rule status | Change the status. Unsupported codes cancel the redirect. |
 | `adv_redirects_forward_query_string` | `bool $forward, array $rule` | setting | Forward the incoming query string to the target. |
-| `adv_redirects_target_url` | `string $url, array $rule, string $path` | n/a | Change the final URL. Unsafe URLs cancel the redirect. |
+| `adv_redirects_target_url` | `string $url, array $rule, string $path` | n/a | Change the final URL. Unsafe URLs cancel the redirect. A URL equal to the requested URL (home URL + decoded path + raw query, compared byte for byte) is dropped too: WP Redirects never redirects a URL to itself. |
 | `adv_redirects_allowed_target_hosts` | `string[] $hosts` | `[]` (any) | Allowlist for external target hosts. |
 | `adv_redirects_compiled_ruleset` | `array $ruleset` | n/a | Alter the compiled rule set before it is cached. |
 | `adv_redirects_validate_rule` | `true\|WP_Error $valid, array $data, ?int $id` | `true` | Return a `WP_Error` to reject a rule. |

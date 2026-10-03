@@ -41,7 +41,7 @@ final class RestImportTest extends Adv_Redirects_Rest_TestCase {
 	public function test_preview_and_import(): void {
 		$preview = $this->rest( 'POST', '/import/preview', $this->body( $this->export['redirects'] ) );
 		$this->assertSame( 200, $preview->get_status() );
-		$this->assertSame( 13, $preview->get_data()['counts']['new'] );
+		$this->assertSame( 14, $preview->get_data()['counts']['new'] );
 
 		$batch  = array_slice( $this->export['redirects'], 0, 2 );
 		$import = $this->rest( 'POST', '/import', $this->body( $batch, false ) );

@@ -73,6 +73,37 @@ final class RedirectorTest extends WP_UnitTestCase {
 		$this->assertSame( 302, $decision['status'] );
 	}
 
+	public function test_never_redirects_to_the_requested_url_itself(): void {
+		$this->rule( 'regex', '^/fy-self/(.*)', '/fy-self/$1' );
+		$this->assertNull( $this->redirector->decide( '/fy-self/x', 'GET' ) );
+		$this->assertNull( $this->redirector->decide( '/fy-self/caf%C3%A9', 'GET' ), 'An encoded capture is the same URL.' );
+		$this->assertNull( $this->redirector->decide( '/fy-self/x?a=1', 'GET' ), 'The forwarded query makes it the same URL again.' );
+
+		Settings::update( [ 'forward_query_string' => false ] );
+		$this->assertSame( 'http://example.org/fy-self/x', $this->redirector->decide( '/fy-self/x?a=1', 'GET' )['url'], 'Dropping the query is a real redirect.' );
+	}
+
+	public function test_case_and_slash_fixes_still_redirect(): void {
+		$this->rule( 'exact', '/NFL', '/nfl' );
+		$this->rule( 'exact', '/foo', '/foo/' );
+
+		$this->assertSame( 'http://example.org/nfl', $this->redirector->decide( '/NFL', 'GET' )['url'] );
+		$this->assertNull( $this->redirector->decide( '/nfl', 'GET' ), 'The target itself is not redirected.' );
+		$this->assertSame( 'http://example.org/foo/', $this->redirector->decide( '/foo', 'GET' )['url'] );
+		$this->assertNull( $this->redirector->decide( '/foo/', 'GET' ) );
+	}
+
+	public function test_target_url_filter_cannot_point_back_at_the_request(): void {
+		$this->rule( 'exact', '/old', '/new' );
+		add_filter(
+			'adv_redirects_target_url',
+			static function () {
+				return 'http://example.org/old';
+			}
+		);
+		$this->assertNull( $this->redirector->decide( '/old', 'GET' ) );
+	}
+
 	public function test_gone_rule_has_no_url(): void {
 		$this->rule( 'exact', '/gone', null, 410 );
 		$decision = $this->redirector->decide( '/gone', 'GET' );

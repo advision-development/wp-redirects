@@ -46,8 +46,8 @@ test.describe( 'Import from Redirection', () => {
 		).toBeVisible();
 
 		await page.getByRole( 'button', { name: 'Preview import' } ).click();
-		await expect( page.getByText( 'New (13)' ) ).toBeVisible();
-		await expect( page.getByText( 'Skipped (7)' ) ).toBeVisible();
+		await expect( page.getByText( 'New (14)' ) ).toBeVisible();
+		await expect( page.getByText( 'Skipped (6)' ) ).toBeVisible();
 		await expect( page.getByText( 'Superseded (1)' ) ).toBeVisible();
 		// The first enabled duplicate (#9) is the one Redirection served.
 		await expect(
@@ -62,11 +62,11 @@ test.describe( 'Import from Redirection', () => {
 		).toBeAttached();
 
 		await page
-			.getByRole( 'button', { name: 'Import 13 redirects' } )
+			.getByRole( 'button', { name: 'Import 14 redirects' } )
 			.click();
 		await expect(
 			panel.getByText(
-				/Import complete: 13 created, 0 updated, 7 skipped, 1 superseded\./
+				/Import complete: 14 created, 0 updated, 6 skipped, 1 superseded\./
 			)
 		).toBeVisible();
 
@@ -98,10 +98,10 @@ test.describe( 'Import from Redirection', () => {
 			.setInputFiles( FIXTURE );
 		await page.getByRole( 'button', { name: 'Preview import' } ).click();
 		await page
-			.getByRole( 'button', { name: 'Import 13 redirects' } )
+			.getByRole( 'button', { name: 'Import 14 redirects' } )
 			.click();
 
-		const result = panel.getByText( /Import complete: 13 created/ );
+		const result = panel.getByText( /Import complete: 14 created/ );
 		await expect( result ).toBeVisible();
 		await expect( page.locator( ':focus' ) ).toContainText(
 			'Import complete'

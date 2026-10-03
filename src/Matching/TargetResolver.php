@@ -72,6 +72,40 @@ final class TargetResolver {
 		return UrlSafety::host_of( (string) preg_replace( '/\$[1-9]/', '', $template ), $site_host );
 	}
 
+	/**
+	 * Whether $url is the request itself, so redirecting to it would send the visitor back to the
+	 * same URL (Yoast SEO Premium has the same guard).
+	 *
+	 * One representation on both sides: $base, then the percent-decoded path, then "?" and the raw
+	 * query when it is non-empty. The request side is already in that form (PathNormalizer decodes
+	 * the path and keeps the query raw), so only the path of $url is decoded here. That makes a capture
+	 * re-encoded by substitute() ("caf%C3%A9") equal the decoded request path it came from ("café").
+	 *
+	 * The comparison is byte for byte: a path that differs only in case ("/NFL" vs "/nfl") or in a
+	 * trailing slash ("/foo" vs "/foo/") is a different URL, so case-fix and slash-fix redirects still
+	 * fire. A fragment is part of the compared path, so "/foo#top" is not "/foo".
+	 *
+	 * @param string $url   Final URL: absolute, or a path when $base is ''.
+	 * @param string $base  Site home URL without trailing slash, or '' to compare paths.
+	 * @param string $path  Decoded request path relative to the home, starting with "/".
+	 * @param string $query Raw request query string without "?".
+	 */
+	public static function is_self( string $url, string $base, string $path, string $query ): bool {
+		$base = rtrim( $base, '/' );
+		$len  = strlen( $base );
+		if ( substr( $url, 0, $len ) !== $base || '/' !== substr( $url, $len, 1 ) ) {
+			return false;
+		}
+		$rest = (string) substr( $url, $len );
+		if ( '' === $base && 0 === strpos( $rest, '//' ) ) {
+			return false;
+		}
+		$qpos      = strpos( $rest, '?' );
+		$url_path  = false === $qpos ? $rest : substr( $rest, 0, $qpos );
+		$url_query = false === $qpos ? '' : substr( $rest, $qpos + 1 );
+		return rawurldecode( $url_path ) === $path && $url_query === $query;
+	}
+
 	public static function substitute( string $template, array $captures, bool $encode ): string {
 		if ( empty( $captures ) || false === strpos( $template, '$' ) ) {
 			return $template;

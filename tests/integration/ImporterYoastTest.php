@@ -106,6 +106,19 @@ final class ImporterYoastTest extends WP_UnitTestCase {
 		$this->assertCount( 16, $this->repo->all() );
 	}
 
+	public function test_chain_into_a_self_redirect_imports_without_a_loop(): void {
+		$entries = [
+			[ 'id' => 1, 'origin' => '^/fy-self/(.*)', 'url' => 'fy-self/$1', 'type' => 301, 'format' => 'regex' ],
+			[ 'id' => 2, 'origin' => 'fy-chain-into-self', 'url' => 'fy-self/a', 'type' => 301, 'format' => 'plain' ],
+		];
+		$preview = $this->importer->preview( $entries, [], Importer::SOURCE_YOAST );
+		$this->assertSame( [ 'new', 'new' ], array_column( $preview['entries'], 'status' ) );
+		$this->assertSame( [], $preview['entries'][1]['warnings'], '/fy-self/a resolves to itself, so the chain ends there.' );
+
+		$result = $this->importer->import( $entries, [], Importer::SOURCE_YOAST );
+		$this->assertSame( 2, $result['counts']['created'] );
+	}
+
 	public function test_filter_receives_the_source(): void {
 		$seen = [];
 		add_filter(
@@ -138,7 +151,7 @@ final class ImporterYoastTest extends WP_UnitTestCase {
 	public function test_redirection_calls_are_unchanged(): void {
 		$export  = json_decode( (string) file_get_contents( dirname( __DIR__ ) . '/fixtures/redirection-export-sample.json' ), true );
 		$preview = $this->importer->preview( $export['redirects'], $export['groups'] );
-		$this->assertSame( 13, $preview['counts']['new'] );
+		$this->assertSame( 14, $preview['counts']['new'] );
 		$by_id   = array_column( $preview['entries'], null, 'source_id' );
 		$this->assertStringContainsString( 'Redirection used entry #9', $by_id[10]['error']['message'] );
 	}

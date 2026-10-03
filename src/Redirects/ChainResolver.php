@@ -48,21 +48,29 @@ final class ChainResolver {
 				return self::result( false, $hops, $current );
 			}
 
+			$match = $matcher->match( $request );
+			if ( null === $match || null === $match->target ) {
+				return self::result( false, $hops, $current );
+			}
+			$next = TargetResolver::substitute( $match->target, $match->captures, true );
+			if ( $forward_query && '' !== $request['query'] ) {
+				$next = TargetResolver::merge_query( $next, $request['query'] );
+			}
+
+			// The redirector never redirects a URL to itself, so the chain ends here and is not a loop.
+			$next_internal = Site::internal_path( $next );
+			if ( null !== $next_internal && TargetResolver::is_self( $next_internal, '', $request['path'], $request['query'] ) ) {
+				return self::result( false, $hops, $current );
+			}
+
 			$key = $request['key'] . ( '' !== $request['query'] ? '?' . $request['query'] : '' );
 			if ( isset( $seen[ $key ] ) ) {
 				return self::result( true, $hops, $current );
 			}
 			$seen[ $key ] = true;
 
-			$match = $matcher->match( $request );
-			if ( null === $match || null === $match->target ) {
-				return self::result( false, $hops, $current );
-			}
-			$current = TargetResolver::substitute( $match->target, $match->captures, true );
-			if ( $forward_query && '' !== $request['query'] ) {
-				$current = TargetResolver::merge_query( $current, $request['query'] );
-			}
-			$hops[] = $current;
+			$current = $next;
+			$hops[]  = $current;
 		}
 
 		return self::result( true, $hops, $current );

@@ -127,4 +127,36 @@ final class TargetResolverTest extends TestCase {
 	public function test_overlong_result_after_query_merge_is_rejected(): void {
 		$this->assertNull( $this->resolver()->resolve( '/new', [], 'a=' . str_repeat( 'x', 2100 ), true ) );
 	}
+
+	public function test_is_self_matches_a_byte_identical_url(): void {
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/forum/x', 'https://example.com', '/forum/x', '' ) );
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/a?b=1', 'https://example.com', '/a', 'b=1' ) );
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/', 'https://example.com', '/', '' ) );
+		$this->assertTrue( TargetResolver::is_self( '/odds/', '', '/odds/', '' ), 'Paths compare without a base.' );
+	}
+
+	public function test_is_self_decodes_the_target_path_like_the_request_path(): void {
+		// A capture re-encoded by substitute() is the same URL as the decoded request path it came from.
+		$url = $this->resolver()->resolve( '/forum/$1', [ '/forum/café x', 'café x' ], '', false );
+		$this->assertSame( 'https://example.com/forum/caf%C3%A9%20x', $url );
+		$this->assertTrue( TargetResolver::is_self( $url, 'https://example.com', '/forum/café x', '' ) );
+	}
+
+	public function test_is_self_is_case_and_slash_sensitive(): void {
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/nfl', 'https://example.com', '/NFL', '' ), 'A case fix still redirects.' );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/foo/', 'https://example.com', '/foo', '' ), 'A slash fix still redirects.' );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/foo', 'https://example.com', '/foo/', '' ) );
+		$this->assertFalse( TargetResolver::is_self( '/Foo', '', '/foo', '' ) );
+	}
+
+	public function test_is_self_compares_the_raw_query_and_the_whole_base(): void {
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a?b=1', 'https://example.com', '/a', '' ) );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a', 'https://example.com', '/a', 'b=1' ) );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a?b=2', 'https://example.com', '/a', 'b=1' ) );
+		$this->assertFalse( TargetResolver::is_self( 'http://example.com/a', 'https://example.com', '/a', '' ), 'An http to https redirect is not a self-redirect.' );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com.evil/a', 'https://example.com', '/a', '' ) );
+		$this->assertFalse( TargetResolver::is_self( 'https://example.com/a#top', 'https://example.com', '/a', '' ) );
+		$this->assertFalse( TargetResolver::is_self( '//example.com/a', '', '//example.com/a', '' ), 'A protocol-relative URL is not a path.' );
+		$this->assertTrue( TargetResolver::is_self( 'https://example.com/blog/a', 'https://example.com/blog/', '/a', '' ), 'A subdirectory home is part of the base.' );
+	}
 }

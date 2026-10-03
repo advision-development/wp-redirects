@@ -96,6 +96,9 @@ final class Redirector {
 			return null;
 		}
 
+		// The URL actually requested, before any path filter: a target equal to it is not redirected.
+		$requested = $request;
+
 		/**
 		 * Filters whether this request should be matched at all.
 		 *
@@ -195,6 +198,12 @@ final class Redirector {
 		 */
 		$url = apply_filters( 'adv_redirects_target_url', $url, $rule, $request['path'] );
 		if ( ! is_string( $url ) || ! UrlSafety::is_safe( $url ) ) {
+			return null;
+		}
+
+		// Never redirect to the requested URL itself (it would repeat forever). Compared byte for byte
+		// as home URL + decoded path + raw query, so case-only and slash-only redirects still fire.
+		if ( TargetResolver::is_self( $url, Site::home_url(), $requested['path'], $requested['query'] ) ) {
 			return null;
 		}
 

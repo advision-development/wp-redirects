@@ -84,6 +84,14 @@ function TestResult( { result, rules, onReveal } ) {
 				'Not redirected: this path is used by WordPress itself.',
 				'wp-redirects'
 			),
+			self: sprintf(
+				/* translators: %d: rule ID */
+				__(
+					'Not redirected: rule #%d points back to this same URL.',
+					'wp-redirects'
+				),
+				result.rule_id
+			),
 		};
 		return (
 			<span>

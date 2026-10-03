@@ -203,6 +203,24 @@ final class RestRedirectsTest extends Adv_Redirects_Rest_TestCase {
 		$this->assertSame( 403, $this->rest( 'POST', '/test', [ 'path' => '/a' ] )->get_status() );
 	}
 
+	public function test_test_endpoint_reports_a_self_redirect_as_not_redirected(): void {
+		$id = $this->create( [ 'type' => 'regex', 'source' => '^/fy-self/(.*)', 'target' => '/fy-self/$1', 'status_code' => 301 ] )->get_data()['rule']['id'];
+
+		$result = $this->rest( 'POST', '/test', [ 'path' => '/fy-self/x' ] )->get_data();
+		$this->assertFalse( $result['matched'] );
+		$this->assertSame( 'self', $result['reason'] );
+		$this->assertSame( $id, $result['rule_id'] );
+		$this->assertNull( $result['target_url'] );
+		$this->assertSame( [], $result['hops'] );
+
+		$this->create( [ 'type' => 'exact', 'source' => '/NFL', 'target' => '/nfl', 'status_code' => 301 ] );
+		$fix = $this->rest( 'POST', '/test', [ 'path' => '/NFL' ] )->get_data();
+		$this->assertTrue( $fix['matched'], 'A case fix still redirects.' );
+		$this->assertSame( [ '/NFL', 'http://example.org/nfl' ], $fix['hops'] );
+		$this->assertFalse( $fix['loop'] );
+		$this->assertSame( 'self', $this->rest( 'POST', '/test', [ 'path' => '/nfl' ] )->get_data()['reason'] );
+	}
+
 	public function test_test_endpoint_skips_paths_the_runtime_never_handles(): void {
 		$this->create( [ 'type' => 'regex', 'source' => '^/(.*)$', 'target' => 'https://new.com/$1', 'status_code' => 301 ] );
 
