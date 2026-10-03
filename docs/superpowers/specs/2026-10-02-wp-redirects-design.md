@@ -474,6 +474,7 @@ All hooks are documented with docblocks in code and in `docs/hooks.md`.
 8. Import from the Redirection plugin (JSON export) is added to scope; see §17.
 9. Rule attribution: `created_by`, `created_via` (`manual`|`import`|`slug`|`api`) and `updated_by` columns (schema v2), set server-side in `Repository`; REST adds `created_by_name`/`updated_by_name`; the rules table shows "By: <user> · <date>" plus a via label, and the last edit on hover and in the edit row.
 10. Import fixes from the final review: in-file duplicates keep the entry Redirection actually served (first enabled, else first) instead of the later one (§17.4); rules in a disabled Redirection group import disabled; the client sends only the fields the server reads (no condition data such as IPs, agents, cookies or headers); an empty imported title never clears an existing rule's note on overwrite.
+11. Import from Yoast SEO Premium (issue #1) is added to scope: detection from Yoast's options, preview and batched import through the same Importer, confirmed removal from Yoast with backup and restore, and the preview limit raised to 5,000. See `2026-10-03-yoast-import-design.md`.
 
 ## 17. Import from Redirection (added 2026-10-02)
 
